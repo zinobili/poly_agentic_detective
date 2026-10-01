@@ -23,6 +23,14 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 5. fix findings → 6. summarize to user (what changed, setup steps, what to test, limits) → 7. update `docs/progress.md`.
 Do not mark a step done without a validator report. Check in with the user after step 0; afterwards continue, but always validate.
 
+## Usage guard (5-hour plan limit)
+Usage % can't be checked from inside a session, so the plan limit can hit without warning. Stay resumable instead:
+- At every workflow boundary (before starting a step, before spawning an agent, after each agent returns), keep a `## Resume here` section at the top of `docs/progress.md` current: date, current step and workflow stage, what's done, what's half-done (files touched), exact next action, open validator findings, what's waiting on the user.
+- Prefer one big agent at a time over several in parallel, and keep agent briefs scoped and lean.
+- When the user says usage is near the limit: finish the current small task, update the resume note, don't spawn new agents, and end the turn.
+- On resume, read `## Resume here` first and continue from "next action". Keep the section updated, don't delete it.
+- Commits: after a step's validator passes, commit locally (user-approved for all steps). Never push without asking.
+
 ## Layout
 `src/poly_actor/{ingest,store,align,analysis,dashboard}`, `config/`, `data/{raw,clean}` (ignored), `notebooks/`, `tests/`, `docs/`.
 
