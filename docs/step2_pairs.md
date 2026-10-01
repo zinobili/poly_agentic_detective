@@ -173,19 +173,29 @@ closedTime.
   to a terminal No as dates pass, awkward for a continuous signal.
 - **`recession` and `macro-inflation` tags**: nearly empty/abandoned; the real series sit under other tags/slugs.
 
-## Round 4 changes (pre-registration A15 to A19)
+## Round 4 changes (pre-registration A15 to A21)
 
 - **BTC re-listed rungs (A15).** Since mid-2025 Polymarket re-lists touched strikes as `...-from-<month>-<day>` rungs that
   count only from a later date. In the cache: 50 such rungs in 5 months (2026-05: 5, 2026-06: 5, 2026-07: 7,
-  2026-08: 17, 2026-09: 16), against 405 whole-month rungs kept. They are excluded (recorded per month in
-  `relisted_rungs_excluded`, summarised in `coverage.relisted_summary`). Each kept rung carries `created_utc`,
+  2026-08: 17, 2026-09: 16), against 405 whole-month rungs kept. They were excluded (recorded per month in
+  `relisted_rungs_excluded`, summarised in `coverage.relisted_summary`; both fields are SUPERSEDED by A20, see
+  `partial_window_rungs` and `coverage.partial_window_summary`). Each kept rung carries `created_utc`,
   `from_date_utc` (null), `relisted` (false) and `rung_usable_from_utc` (created + 24h; the 24h age rule is per rung).
   The ladder crossing is made well defined by isotonic regression before the 0.5 crossing
   (`poly_actor.pairs.monotone_ladder_crossing`, unit tested).
+- **BTC time-t rung selection (A20).** Supersedes the A15 rung rules. A touched strike (dip K: any dip rung at a strike <= K
+  resolved Yes with `closed_time <= t`; up K: any up rung at a strike >= K) has P = 1 and all rungs at it are ignored;
+  otherwise whole-month rung first, a partial-window rung only where no whole-month rung exists; one rung per strike per
+  hour; no CLOB quote at t means skipped; PAV stays as a logged safety net. Partial windows are detected by slug,
+  description ("from the creation of this market", "between <date>" after the event opened) and created-after-touch.
+  Cache: 75 partial-window rungs in 8 months (2024-11: 1, 2026-02: 3, 04: 3, 05: 5, 06: 5, 07: 10, 08: 28, 09: 20),
+  4 inactive rungs (2024-11: 1, 2025-07: 2, 2025-11: 1; "dead duplicates" until A21), 376 whole-month rungs kept. The yaml records
+  `partial_window_rungs` and `inactive_excluded` per month and `coverage.partial_window_summary`. A plateau at
+  exactly 0.5 that is the first bracketing pair returns the geometric midpoint of its first two rungs.
 - **Date cross-check (A16)** is two-sided (0 to 24h after the event time; observed 2.0h to 4.7h).
-- **CPI companions (A18):** `first_usable_utc` per month; 2026-01 from 2026-01-14T23:00Z, 2026-03 from 2026-03-11T18:00Z.
+- **CPI first usable (A18):** `first_usable_utc` for every CPI month (avoids a mid-month partition switch; each earlier companion is a complete partition); 2026-01 from 2026-01-14T23:00Z, 2026-03 from 2026-03-11T18:00Z.
 - **Derived 2.7-2.8 bucket (A19):** `range`, width 0.2, centre 2.75, tolerance 0.1pp; clip-binding rate is a step-3 metric.
-- **BTC first active (A17):** 2024-11 and 2024-12 have no dip rungs and are gaps; the signal starts 2025-01-03T19:21:06Z.
+- **BTC first active (A17, superseded by A21):** A21 reads rung direction from the description, so 2024-11 and 2024-12 do have dip rungs (six "reach"-titled rungs resolve on a final Low price) and are usable; the signal starts 2024-11-02T15:04:59Z. Remaining gaps: 2025-03, 2025-12. The "between" guard compares dates only.
 - **Gamma volume fields look unreliable.** For example the Fed Mar 2026 `no_change` bucket shows `volume_usd: 0.0` while
   `increase_25bp` shows about $173M. Volumes in the yaml are descriptive only; no signal, filter or roll uses them.
 

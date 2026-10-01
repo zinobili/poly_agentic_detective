@@ -60,11 +60,16 @@ import requests
 import yaml
 
 from poly_actor.pairs import (
+    BtcRung,
+    detect_partial_window,
     et_to_utc,
-    monotone_ladder_crossing,
+    flag_created_after_touch,
+    monotone_ladder_crossing_diag,
     parse_cpi_bucket,
     parse_from_date,
     parse_strike,
+    rung_direction,
+    select_ladder,
 )
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
@@ -587,7 +592,8 @@ def run_time_cross_checks() -> None:
         "fed", fomc_event_times_utc(), "decision_utc", {k: [v] for k, v in FED_MEETINGS.items()}
     )
     bad += check_event_times_against_closed("cpi", cpi_event_times_utc(), "release_utc", CPI_MONTHS)
-    assert not bad, f"{len(bad)} event-time cross-check mismatches (see table above)"
+    if bad:
+        raise SystemExit(f"{len(bad)} event-time cross-check mismatches (see table above)")
 
 
 # ===========================================================================
@@ -917,39 +923,75 @@ def build_btc() -> dict:
                 }
             )
             continue
-        up, dip, relisted_rungs = [], [], []
+        g_start = _iso(e["startDate"])
+        g_start_dt = datetime.fromisoformat(g_start.replace("Z", "+00:00"))
+        recs: list[_Flow] = []
+        brungs: list[BtcRung] = []
         for m in e["markets"]:
             q = m.get("question", "")
             strike = parse_strike(q)
             tok, price = _yes(m)
-            direction = "dip" if "dip" in q.lower() else "reach"
+            ladder, dir_from_desc = rung_direction(q, m.get("description"))
+            direction = "dip" if ladder == "dip" else "reach"
             created = _iso(m["createdAt"])
+            closed = _iso(m.get("closedTime"))
             from_d = parse_from_date(m["slug"], y)
-            rec = _Flow(
-                {
-                    "slug": m["slug"],
-                    "token_id_yes": tok,
-                    "strike_usd": strike,
-                    "created_utc": created,
-                    "from_date_utc": et_to_utc(from_d, (0, 0)) if from_d else None,
-                    "relisted": from_d is not None,
-                    "rung_usable_from_utc": _plus_hours(created, BTC_MIN_EVENT_AGE_H),
-                    "volume_usd_lifetime_at_pull_DO_NOT_FILTER_ON": _vol(m.get("volume")),
-                    "closed_time": _iso(m.get("closedTime")),
-                    "resolved_yes": (price >= 0.5)
-                    if (m.get("closed") and price is not None)
-                    else None,
-                }
+            # A21: inactive = active=false and no closedTime in the final snapshot
+            # (structure only; a mild look-ahead). Not necessarily a duplicate.
+            inactive = (not m.get("active")) and not m.get("closedTime")
+            reasons = detect_partial_window(m["slug"], m.get("description"), y, g_start_dt)
+            resolved_yes = (price >= 0.5) if (m.get("closed") and price is not None) else None
+            recs.append(
+                _Flow(
+                    {
+                        "slug": m["slug"],
+                        "token_id_yes": tok,
+                        "strike_usd": strike,
+                        "direction": direction,
+                        "direction_from_description": dir_from_desc,
+                        "created_utc": created,
+                        "from_date_utc": et_to_utc(from_d, (0, 0)) if from_d else None,
+                        "relisted": from_d is not None,
+                        "rung_usable_from_utc": _plus_hours(created, BTC_MIN_EVENT_AGE_H),
+                        "volume_usd_lifetime_at_pull_DO_NOT_FILTER_ON": _vol(m.get("volume")),
+                        "closed_time": closed,
+                        "resolved_yes": resolved_yes,
+                        "inactive_excluded": inactive,
+                        "partial_window": False,
+                        "partial_window_detected_by": reasons,
+                    }
+                )
             )
-            if from_d is not None:
-                rec["direction"] = direction
-                relisted_rungs.append(rec)
+            brungs.append(
+                BtcRung(
+                    slug=m["slug"],
+                    ladder=ladder,
+                    strike=strike,
+                    created=datetime.fromisoformat(created.replace("Z", "+00:00")),
+                    closed_time=datetime.fromisoformat(closed.replace("Z", "+00:00"))
+                    if closed
+                    else None,
+                    resolved_yes=resolved_yes,
+                    inactive=inactive,
+                )
+            )
+        cat = flag_created_after_touch(brungs)
+        up, dip, partial_rungs, inactive_rungs = [], [], [], []
+        for rec in recs:
+            if rec["slug"] in cat:
+                rec["partial_window_detected_by"].append("created_after_touch")
+            if rec["inactive_excluded"]:
+                rec["partial_window_detected_by"] = []
+                inactive_rungs.append(rec)
+            elif rec["partial_window_detected_by"]:
+                rec["partial_window"] = True
+                partial_rungs.append(rec)
             else:
-                (dip if direction == "dip" else up).append(rec)
+                (dip if rec["direction"] == "dip" else up).append(rec)
         up.sort(key=lambda r: r["strike_usd"])
         dip.sort(key=lambda r: -r["strike_usd"])
+        partial_rungs.sort(key=lambda r: (r["direction"], r["strike_usd"], r["created_utc"]))
         month_start = et_to_utc((y, mo, 1), (0, 0))
-        g_start = _iso(e["startDate"])
         first_usable = max(month_start, _plus_hours(g_start, BTC_MIN_EVENT_AGE_H))
         lag_h = round(
             (
@@ -982,8 +1024,10 @@ def build_btc() -> dict:
                 + " rungs (one-sided ladder; no signal)",
                 "n_up_rungs": len(up),
                 "n_dip_rungs": len(dip),
-                "n_relisted_rungs_excluded": len(relisted_rungs),
-                "relisted_rungs_excluded": relisted_rungs,
+                "n_partial_window_rungs": len(partial_rungs),
+                "partial_window_rungs": partial_rungs,
+                "n_inactive_excluded": len(inactive_rungs),
+                "inactive_excluded": inactive_rungs,
                 "up_ladder": up,
                 "dip_ladder": dip,
             }
@@ -1000,41 +1044,97 @@ def build_btc() -> dict:
     gaps.sort(key=lambda g: g["month"])
     usable_months = [m for m in months if m["usable"]]
     first_active = usable_months[0]["first_usable_utc"]
-    aff = [m for m in months if m["n_relisted_rungs_excluded"]]
-    relisted_summary = {
-        "n_relisted_rungs_excluded": sum(m["n_relisted_rungs_excluded"] for m in months),
+    reason_names = (
+        "slug",
+        "description_creation",
+        "description_between",
+        "created_after_touch",
+    )
+    per_month: dict[str, dict] = {}
+    for m in months:
+        pw = m["partial_window_rungs"]
+        if not pw and not m["n_inactive_excluded"]:
+            continue
+        per_month[m["month"]] = {
+            "n_partial_window": len(pw),
+            **{
+                f"by_{r}": sum(1 for x in pw if r in x["partial_window_detected_by"])
+                for r in reason_names
+            },
+            "n_inactive_excluded": m["n_inactive_excluded"],
+        }
+    partial_summary = {
+        "n_partial_window_rungs": sum(m["n_partial_window_rungs"] for m in months),
+        "n_inactive_excluded": sum(m["n_inactive_excluded"] for m in months),
         "n_whole_month_rungs_kept": sum(m["n_up_rungs"] + m["n_dip_rungs"] for m in months),
-        "n_months_affected": len(aff),
-        "months_affected": {m["month"]: m["n_relisted_rungs_excluded"] for m in aff},
-        "note": "Relisted rungs are re-created touched strikes that count only from a later date (A15); never used.",
+        "n_months_affected": sum(1 for v in per_month.values() if v["n_partial_window"]),
+        "per_month": per_month,
+        "note": (
+            "A rung is partial-window if any detector fires (slug -from-<date>, description 'from the "
+            "creation of this market', description 'between <date>' later than the event's open day, "
+            "created after its strike was already touched; A20). Detectors overlap, so by_* counts do "
+            "not sum to n_partial_window. Partial rungs are used ONLY at a strike with no whole-month "
+            "rung and not yet touched (select_ladder); inactive rungs never."
+        ),
     }
-    print(f"  BTC relisted: {relisted_summary}", file=sys.stderr)
+    print(f"  BTC partial-window / inactive: {partial_summary}", file=sys.stderr)
     # Illustrative ladder-implied levels on the cached active-month snapshot.
     snap = _event("what-price-will-bitcoin-hit-in-october-2026")
     sample = None
     if snap:
-        upr, dpr = [], []
+        snap_open = datetime.fromisoformat(_iso(snap["startDate"]).replace("Z", "+00:00"))
+        snap_rungs: list[BtcRung] = []
+        snap_quotes: dict[str, float] = {}
         for m in snap["markets"]:
             q = m.get("question", "")
             tok, price = _yes(m)
             s = parse_strike(q)
-            if (
-                s is None or parse_from_date(m["slug"], 2026) is not None
-            ):  # A15: whole-month rungs only
+            if s is None:
                 continue
-            if m.get("closed"):
-                # time-t rule: a touched (Yes) rung is P=1 after its closedTime; a No rung is dropped.
-                if price is None or price < 0.5:
-                    continue
-                price = 1.0
-            (dpr if "dip" in q.lower() else upr).append((s, price))
-        k_up, k_dn = monotone_ladder_crossing(upr, "up"), monotone_ladder_crossing(dpr, "dip")
+            closed = _iso(m.get("closedTime"))
+            inactive = (not m.get("active")) and not m.get("closedTime")
+            snap_rungs.append(
+                BtcRung(
+                    slug=m["slug"],
+                    ladder=rung_direction(q, m.get("description"))[0],
+                    strike=s,
+                    created=datetime.fromisoformat(_iso(m["createdAt"]).replace("Z", "+00:00")),
+                    closed_time=datetime.fromisoformat(closed.replace("Z", "+00:00"))
+                    if closed
+                    else None,
+                    resolved_yes=(price >= 0.5)
+                    if (m.get("closed") and price is not None)
+                    else None,
+                    inactive=inactive,
+                    partial_reasons=tuple(
+                        detect_partial_window(m["slug"], m.get("description"), 2026, snap_open)
+                    ),
+                )
+            )
+            if price is not None and not m.get("closed"):
+                snap_quotes[m["slug"]] = price
+        cat = flag_created_after_touch(snap_rungs)
+        snap_rungs = [
+            BtcRung(
+                **{**r.__dict__, "partial_reasons": (*r.partial_reasons, "created_after_touch")}
+            )
+            if r.slug in cat
+            else r
+            for r in snap_rungs
+        ]
+        t_snap = datetime(2026, 10, 1, 23, 59, 59, tzinfo=UTC)
+        upr = [(x.strike, x.p) for x in select_ladder(snap_rungs, "up", t_snap, snap_quotes, 0)]
+        dpr = [(x.strike, x.p) for x in select_ladder(snap_rungs, "dip", t_snap, snap_quotes, 0)]
+        (k_up, _), (k_dn, _) = (
+            monotone_ladder_crossing_diag(upr, "up"),
+            monotone_ladder_crossing_diag(dpr, "dip"),
+        )
         sample = {
             "event_slug": snap["slug"],
             "note": (
                 "Illustrative snapshot of the cached Gamma outcomePrices at pull time (NOT a price-history "
-                "look): the time-t rule is applied (closed rungs that resolved Yes count as P=1, closed No rungs "
-                "are dropped; no lifetime-volume filter); P(reach K)=0.5 log-interpolated on the up "
+                "look): the A20 time-t rule is applied via select_ladder (touched strikes P=1, one rung per strike, "
+                "whole-month before partial-window; no lifetime-volume filter); P(reach K)=0.5 log-interpolated on the up "
                 "ladder and P(dip K)=0.5 on the dip ladder."
             ),
             "k_up_star_usd": round(k_up) if k_up else None,
@@ -1082,9 +1182,9 @@ def build_btc() -> dict:
         "signal": {
             "name": "btc_ladder_level_and_skew",
             "per_hour_procedure": [
-                "WHOLE-MONTH RUNGS ONLY (A15): re-listed 'from-date' rungs (slug ends -from-<month>-<day>; relisted=true) are excluded and recorded under relisted_rungs_excluded; they never enter a ladder.",
-                f"A rung counts at hour t only if its event has been open for at least {BTC_MIN_EVENT_AGE_H}h (t >= gamma_start + {BTC_MIN_EVENT_AGE_H}h; see first_usable_utc) AND the RUNG ITSELF is at least {BTC_MIN_EVENT_AGE_H}h old (t >= created_utc + {BTC_MIN_EVENT_AGE_H}h = rung_usable_from_utc; A15) AND the rung is open at t (t < closed_time or closed_time null). A rung touched earlier (resolved_yes true) is treated as P=1 for t >= closed_time (so 0.5 stays bracketed); a rung that closed No is dropped after closed_time. NO lifetime-volume filter: lifetime volume is only known at pull time (look-ahead). Step 3 may add cumulative-volume-to-t (computed from trades, if available) as a time-t liquidity filter.",
-                "Up-ladder: rungs 'reach $K' ordered by K ascending (P non-increasing). Before interpolating, apply isotonic regression (pool-adjacent-violators, unit weights) to the hour's rung probabilities: non-increasing in strike on the up-ladder, non-decreasing in strike on the dip-ladder (A15; poly_actor.pairs.monotone_ladder_crossing). Then take the FIRST crossing of 0.5 walking away from spot and find the strike K_up* by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
+                "A20/A21 RUNG SELECTION (poly_actor.pairs.select_ladder): at hour t a dip strike K is TOUCHED if any dip rung with strike <= K in that month has closed_time <= t and resolved Yes (BTC fell to the lower strike, so it fell to every higher one); an up strike K is TOUCHED if any up rung with strike >= K has closed_time <= t and resolved Yes. A touched strike has P=1 and every rung at that strike (fresh or not) is ignored. For an untouched strike use the whole-month rung if one exists at that strike AT t (created_utc <= t; a whole-month rung created after t does not suppress a partial rung); use a partial-window rung (partial_window=true, partial_window_detected_by lists slug / description_creation / description_between / created_after_touch) only if no whole-month rung exists at that strike. At most ONE rung per strike per hour (no tie-averaging of different questions; ties among eligible rungs of one kind: earliest created_utc, then slug). A rung with no CLOB quote at t is skipped at t. Rung direction comes from the resolution text (final High price = up, final Low price = dip), falling back to the question; rungs where the description overrides the question carry direction_from_description=true (A21). Rungs with active=false and no closedTime in the final snapshot (inactive_excluded; Gamma may still carry a stale outcomePrices) are excluded.",
+                f"A rung counts at hour t only if its event has been open for at least {BTC_MIN_EVENT_AGE_H}h (t >= gamma_start + {BTC_MIN_EVENT_AGE_H}h; see first_usable_utc) AND the RUNG ITSELF is at least {BTC_MIN_EVENT_AGE_H}h old (t >= created_utc + {BTC_MIN_EVENT_AGE_H}h = rung_usable_from_utc; A15) AND the rung is open at t (t < closed_time or closed_time null); touched strikes follow the A20 rule above (P=1 from the touching rung's closed_time). NO lifetime-volume filter: lifetime volume is only known at pull time (look-ahead). Step 3 may add cumulative-volume-to-t (computed from trades, if available) as a time-t liquidity filter.",
+                "Up-ladder: selected rungs 'reach $K' ordered by K ascending (P non-increasing). Before interpolating, apply isotonic regression (safety net only after A20) (pool-adjacent-violators, unit weights) to the hour's rung probabilities: non-increasing in strike on the up-ladder, non-decreasing in strike on the dip-ladder (A15; poly_actor.pairs.monotone_ladder_crossing). Then take the FIRST crossing of 0.5 walking away from spot and find the strike K_up* by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
                 "Dip-ladder: rungs 'dip to $K' ordered by K descending; find K_dn* where P=0.5 the same way.",
                 "ladder_level = exp((ln K_up* + ln K_dn*)/2); half_width = (ln K_up* - ln K_dn*)/2.",
                 "skew = ln K_up* + ln K_dn* - 2*ln(S_t) with S_t = BTC-USD spot (positive = upside rungs further away than downside rungs relative to spot).",
@@ -1092,7 +1192,8 @@ def build_btc() -> dict:
             "min_event_age_hours": BTC_MIN_EVENT_AGE_H,
             "min_rung_age_hours": BTC_MIN_EVENT_AGE_H,
             "ladder_monotone_fit": "isotonic regression (PAVA) per ladder per hour before the 0.5 crossing (A15)",
-            "relisted_rungs": "excluded; recorded per month (relisted_rungs_excluded) and summarised in coverage.relisted_summary (A15)",
+            "partial_window_rungs": "recorded per month (partial_window_rungs, with detection methods) and summarised in coverage.partial_window_summary; used only per the A20 fallback rule",
+            "pav_pooling_metric": "isotonic regression is only a safety net after A20 selection; step 3 logs the share of hours where PAV pools anything (poly_actor.pairs.monotone_ladder_crossing_diag)",
             "dropped_hours_metric": "step 3 reports the share of hours dropped (0.5 not bracketed, no usable rungs, month-start gap) per month and overall",
             "primary_signal": "hourly change in ln(ladder_level)",
             "why_not_nearest_0.5_reach_threshold": (
@@ -1116,9 +1217,9 @@ def build_btc() -> dict:
             "signal_first_active_utc": first_active,
             "signal_last_active_through": TODAY,
             "gaps": gaps,
-            "relisted_summary": relisted_summary,
+            "partial_window_summary": partial_summary,
             "note": (
-                "Months with no Gamma event, or with only one whole-month ladder (2024-11, 2024-12: no dip rungs; A17), have no ladder signal; hours in those months are dropped (no splice "
+                "Months with no Gamma event, or with only one whole-month ladder (none after A21: 2024-11 and 2024-12 have both ladders once rungs titled 'reach' but resolving on a final Low price are classed as dip rungs), have no ladder signal; hours in those months are dropped (no splice "
                 "across the gap). MONTH-START GAP: the new month's event opens up to ~2 days after the month "
                 "begins (see event_open_lag_hours_after_month_start) and the previous event rolls out at month "
                 "end + 1h, so hours between roll_utc and first_usable_utc (event open + 24h) carry no signal "
@@ -1291,7 +1392,7 @@ def build_cpi() -> dict:
             merged = [
                 _Flow({**b, "from_event": parts[0]["event_slug"]}) for b in parts[0]["buckets"]
             ]
-        # A18: merged signal defined only from the hour every companion event is open.
+        # A18: first_usable_utc for ALL CPI months (avoids a mid-month partition switch; each earlier companion is a complete partition).
         latest_open = max(p["gamma_start"] for p in parts)
         first_usable = max(prev_roll, _ceil_hour(latest_open))
         companion_drop = None
