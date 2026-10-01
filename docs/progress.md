@@ -1,13 +1,19 @@
 # Progress
 
 ## Resume here
-- Updated 2026-10-01. Commits: 3771e65 (step 0), 1a0fdba (step 1), 37a7a9e, d432858, b7e53cd (step 2), d038f5b (harness).
-- Steps 0-2 DONE. All 4 pairs approved: fed_decision, bitcoin_monthly_ladder, us_cpi_inflation (release-day event study), us_recession (secondary). Pre-registration frozen (A1-A21) before any price history was viewed.
-- Current: Step 3 (ingestion), stage = VALIDATING. Built and run (uncommitted): src/poly_actor/ingest/*, store/raw_views.py, load_btc_rungs, tests/test_ingest.py; 144 tests pass. Data: 1.32M Polymarket rows (697 tokens), 48.7k stock bars, 2,665 calls, 0 failures; re-run 0 calls. pairs.yaml status → approved.
-- Next action: wait for the step 3 validator → fix → commit. Then step 4 (alignment). Trends/GDELT = step 3b, later.
-- Step 3 requirements: "Requirements learned in step 1" + "Step 3, BTC ladder" in docs/milestone1_plan.md.
-- Waiting on user: nothing.
-- Side task (2026-10-01, user request): public-repo readiness audit (fresh validator agent). Added README.md (with disclaimer), LICENSE (MIT), .github/workflows/ci.yml — uncommitted, not part of step 3; commit them separately. Commit-email rewrite to GitHub noreply is pending: the user will run it. Other findings (empty-window data gap, dependency pinning, minors) will be pasted into this session by the user for discussion.
+- **PAUSED 2026-10-01 ~15:40 UTC at the user's request (token limit). Do not continue until the user says so.**
+- Commits (after the email rewrite): step 0-2 and harness … 03ad9eb (step 3), 8de9df1 (README/LICENSE/CI), 398986a (hook CI fix) = HEAD. Pushed to https://github.com/zinobili/poly_actor (private), CI green.
+- Steps 0-2 DONE. All 4 pairs approved, pre-registration frozen (A1-A21).
+- Step 3: committed and validated (PASS WITH ISSUES). **Fix round built but NOT validated or committed** (saved on disk):
+  - modified: src/poly_actor/ingest/{cli,common,polymarket,stocks,targets}.py, tests/test_ingest.py
+  - new: tests/test_ingest_fixes.py, docs/step3_ingestion.md; outputs in data/scratch/step3/ (gap_inventory.csv, stock_gaps.csv, run_log_fix.txt)
+  - 162 tests pass, ruff clean (checked at pause).
+  - Fixes: fid-10 backfill of fid-60 holes (1,893 gaps: 1,882 filled, 10 partial + 1 unfilled = one upstream outage 2025-10-29 09-14Z); empty-200 → status empty / empty_confirmed with fid-1 probe; legacy 0-row ok windows re-fetched; ingest lock; torn-manifest-line skip; window end floor(asof-10min); stock bar-count check (23 short days) + 1-day lag; 3 test gaps closed.
+  - Raw rows now: fid60 576,638 (697 tokens), fid10 47,567 (109), fid1 743,602 (238). Re-run at fixed asof = 0 calls.
+- 2026-10-02: applied workflow optimisations 1–7 (agent report cap + docs/reviews/, builder self-check vs checklist + docs/handoff/lessons.md, severity gate + 2-round cap, sonnet validator by default, hand-off files, scripts/check.sh, --workers for ingestion). The --workers change is part of the uncommitted step 3 fix round.
+- **Next action on resume:** run a lean validator on the step 3 fix round (/validate-step 3: backfill correctness and no look-ahead in fid=10, empty/empty_confirmed logic, lock, bar-count check, 1-day lag, new tests) → fix → commit → push only if the user asks → Step 4 (alignment).
+- Step 4 notes: resample across fid=60/10/1; clip/flag 209 rows with p>1; yfinance gap 2026-01-30 11:30 ET → 02-02 13:30 ET; BTC-USD short days in stock_gaps.csv; re-stamp bars to bar end (XNYS); BTC dropped-hour/PAV/CPI-clip metrics.
+- Waiting on user: the go-ahead to resume.
 
 | Step | Status | Validator | Notes |
 |---|---|---|---|
@@ -15,7 +21,7 @@
 | 1 Data check | **done** | R1 (9 issues), R2 (early-close leak), R3 PASS WITH ISSUES (doc minors fixed by main) | hourly feasible across full market life; API look-ahead + inconsistent boundaries → clip + de-dup; bar re-stamp via XNYS calendar | validator found: API appends live price after endTs (look-ahead), yfinance 730 = trading days, recommendation too pessimistic; data-engineer fixing doc; requirements copied to milestone1_plan.md |
 | 2 Pairs | **done** — 37a7a9e, d432858, b7e53cd (all 4 pairs approved after A20/A21) | R3 PASS WITH ISSUES (dates all verified vs official calendars). Open: BTC re-listed rungs (major), two-sided date check, CPI companion-event rule | Recommendation: Fed approve; BTC hold until A15; CPI approve release-day test; recession secondary |
 | 2 Pairs (history) | R1 **FAIL** (11 items) → R2 **FAIL**: 3 FOMC dates 1 day late, CPI release times wrong (Oct 2025 CPI never released, shutdown), false CPI Aug-2026 gap, bucket parser bug, DST bug in BTC roll | fresh data-engineer fixing; adding unit tests + date cross-check vs closedTime; prereg amendments logged | draft: fed_decision, us_recession, bitcoin_monthly_price, us_cpi_inflation (tariffs rejected). Needs user approval after validation |
-| 3 Ingestion | in progress (build) | | price data first; Trends/GDELT = 3b |
+| 3 Ingestion | committed 03ad9eb; fix round built, NOT yet validated/committed (paused) | R1 PASS WITH ISSUES (no look-ahead in 1.32M rows; spot-checks exact) | majors: fid-60 holes, empty-200 marked covered |
 | 4 Alignment | not started | | |
 | 5 Dashboard | not started | | |
 | 6 Analysis | not started | | |

@@ -12,3 +12,4 @@ For each lesson:
 - Structure: the intuition in plain words → a tiny worked example on toy data → the same thing on our real data → common mistakes → 2–3 quiz questions with answers hidden at the bottom.
 - Use the project's own code (`poly_actor.*`) rather than re-implementing it.
 - Only write inside `notebooks/`. Never change source code.
+- Return to the caller at most 100 words: the lesson path and its 3-line outline.

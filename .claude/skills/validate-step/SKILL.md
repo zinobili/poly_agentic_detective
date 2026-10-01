@@ -7,9 +7,15 @@ description: Run independent validation of a finished poly_actor milestone step 
 
 Argument: the step number (0–7). If missing, ask.
 
-1. Collect context for the validator: the step number, what was claimed to be built (files, commands), and the checklist below for that step.
-2. Spawn a **fresh** agent (`subagent_type: validator` if available, else `general-purpose` told to follow `.claude/agents/validator.md`). Do NOT fork — the validator must not inherit the builder's assumptions.
-3. When the report arrives: fix blockers/majors, re-run the validator if anything was a blocker, then record the verdict in `docs/progress.md`.
+1. Make sure `docs/handoff/step<N>.md` is current: decisions, requirements, the builder's claims, and the path to the builder's report. Keep the brief short: "Validate step N, round K. Read docs/handoff/step<N>.md and the checklist below." Don't paste history.
+2. Spawn a **fresh** agent (`subagent_type: validator`). Do NOT fork: the validator must not inherit the builder's assumptions.
+   - **Model:** the default (sonnet) for re-checks and mechanical steps. Pass `model: "opus"` only for the FIRST validation round of analysis-heavy steps (4 and 6), or when sonnet reports something it couldn't resolve.
+   - **Re-check rounds:** scope the brief to the diff since the last round plus the previous review's blockers and majors.
+3. **Severity gate.** When the ≤250-word summary arrives:
+   - Blockers or majors: fix them, then re-validate (scoped).
+   - Minors only: the step PASSES. Commit, and append the minors to `docs/handoff/step<N+1>.md` so the next builder handles them. Don't spend a round on them.
+4. **Round cap: at most 2 validation rounds per step.** If round 2 still has blockers or majors, stop and ask the user. Options: accept with known issues, park the failing part (e.g. one pair), or do one more round. Don't loop.
+5. Record the verdict and the review path in `docs/progress.md`. Add any new general lesson (a bug class the builder should have caught) to `docs/handoff/lessons.md`.
 4. Tell the user: verdict, what was fixed, what remains open.
 
 ## Checklists

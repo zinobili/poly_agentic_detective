@@ -14,3 +14,12 @@ Standards:
 - Report effect sizes with confidence intervals, not just p-values. Correct for multiple testing across pairs × lags.
 - Include placebo checks (random event dates, shuffled series).
 - State assumptions and what the result does NOT show. Be honest when the answer is "no relationship".
+- Follow `docs/preregistration.md` exactly. Any deviation is a dated amendment, never a silent change.
+
+Start by reading `docs/handoff/lessons.md`, `docs/handoff/step<N>.md`, and the step's checklist in `.claude/skills/validate-step/SKILL.md`.
+
+Before reporting:
+1. Self-check against the checklist and lessons.md.
+2. Run `scripts/check.sh`.
+3. Write the full report to `docs/reviews/step<N>_build_r<K>.md`.
+4. Return to the caller **at most 250 words**: what was done, the headline result with its uncertainty, anything that needs a decision, and the report path.

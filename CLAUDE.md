@@ -18,10 +18,18 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 - Every market→ticker pair in `config/pairs.yaml` needs a written rationale.
 
 ## Workflow (every step)
-1. Plan the step → 2. build (hooks auto-run ruff) → 3. run tests →
-4. **independent validation**: spawn a fresh `validator` agent via `/validate-step <N>` →
-5. fix findings → 6. summarize to user (what changed, setup steps, what to test, limits) → 7. update `docs/progress.md`.
-Do not mark a step done without a validator report. Check in with the user after step 0; afterwards continue, but always validate.
+1. **Plan.** Write or refresh `docs/handoff/step<N>.md` with the decisions, requirements, the minors carried over, and the checklist. Write rules as 2–3 input → expected-output examples, not prose.
+2. **Build.** Brief the builder agent short: "Read `docs/handoff/lessons.md` and `step<N>.md`, then do X." The builder self-checks against the checklist and the lessons before reporting.
+3. **`bash scripts/check.sh`** runs the tests, ruff, the pairs.yaml rebuild and the ingest dry run.
+4. **Validate** with `/validate-step <N>`, using a fresh validator. Severity gate: only blockers and majors trigger a re-check, and minors move to the next step's hand-off. **At most 2 rounds**, then ask the user.
+5. **Commit** locally, then update `docs/progress.md`.
+6. **Report to the user once per step boundary**, not after every agent report.
+
+Do not mark a step done without a validator report.
+
+**Agent reports are ≤250 words.** Full reports live in `docs/reviews/step<N>_{build,r<K>}.md`; open them only when needed.
+
+**Long data runs:** use concurrent workers (`--workers`) and run in the background while other work, such as code review or tests, continues.
 
 ## Usage guard (5-hour plan limit)
 In the desktop app, `mcp__ccd_session_mgmt__get_usage` reports the 5-hour % (not available in a plain terminal session). The limit can still hit between checks, so stay resumable:
