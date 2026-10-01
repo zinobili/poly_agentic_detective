@@ -353,3 +353,47 @@ def select_ladder(
             )
         )
     return out
+
+
+def load_btc_rungs(yaml_month: Mapping) -> list[BtcRung]:
+    """Rebuild `BtcRung`s from one `bitcoin_monthly_ladder.markets[]` entry of
+    config/pairs.yaml. Unions up_ladder, dip_ladder, partial_window_rungs and
+    inactive_excluded by slug; yaml `direction: reach` -> ladder 'up', `dip` -> 'dip'.
+    `partial_reasons` comes from `partial_window_detected_by`; `inactive` from
+    `inactive_excluded`. Timestamps are parsed to tz-aware UTC."""
+
+    def ts(v) -> datetime | None:
+        if v is None:
+            return None
+        if isinstance(v, datetime):  # PyYAML already parses unquoted ISO timestamps
+            return v.replace(tzinfo=UTC) if v.tzinfo is None else v.astimezone(UTC)
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).astimezone(UTC)
+
+    by_slug: dict[str, BtcRung] = {}
+    groups = ("up_ladder", "dip_ladder", "partial_window_rungs", "inactive_excluded")
+    for key in groups:
+        for r in yaml_month.get(key) or []:
+            direction = r["direction"]
+            if direction not in ("reach", "dip"):
+                raise ValueError(f"unknown direction {direction!r} for {r['slug']}")
+            created = ts(r["created_utc"])
+            if created is None:
+                raise ValueError(f"rung {r['slug']} has no created_utc")
+            new = BtcRung(
+                slug=r["slug"],
+                ladder="up" if direction == "reach" else "dip",
+                strike=float(r["strike_usd"]),
+                created=created,
+                closed_time=ts(r.get("closed_time")),
+                resolved_yes=r.get("resolved_yes"),
+                inactive=bool(r.get("inactive_excluded")),
+                partial_reasons=tuple(r.get("partial_window_detected_by") or ()),
+            )
+            old = by_slug.get(r["slug"])
+            if (
+                old is None
+                or (new.partial_reasons and not old.partial_reasons)
+                or (new.inactive and not old.inactive)
+            ):
+                by_slug[r["slug"]] = new
+    return list(by_slug.values())
