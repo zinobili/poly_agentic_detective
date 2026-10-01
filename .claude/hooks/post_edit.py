@@ -5,6 +5,7 @@ auto-fix are fed back to Claude as context so it can fix them.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 RUFF = ROOT / ".venv" / "Scripts" / "ruff.exe"
 if not RUFF.exists():
     RUFF = ROOT / ".venv" / "bin" / "ruff"
+if not RUFF.exists() and shutil.which("ruff"):
+    RUFF = Path(shutil.which("ruff"))  # e.g. CI, where ruff is installed on PATH
 
 
 def main() -> None:
