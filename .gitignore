@@ -17,3 +17,6 @@ data/
 
 # claude code local overrides
 .claude/settings.local.json
+
+# generated outputs (embed third-party data)
+notebooks/*.html

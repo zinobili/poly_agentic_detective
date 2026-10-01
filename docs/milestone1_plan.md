@@ -31,7 +31,8 @@ Step 3 (ingestion):
 - Gamma timestamps come in mixed formats (`...Z` and `"2025-09-17 21:08:44+00"`); the parser must accept both.
 
 Step 4 (alignment):
-- yfinance 1h bars are labelled by their **start** time. Re-stamp each bar to its end time (the last bar of the day, 15:30–16:00 ET, is 30 minutes) or the stock side leaks up to 1h of the future.
+- yfinance 1h bars are labelled by their **start** time. Re-stamp each bar using the XNYS session close from `exchange_calendars`. The last observed bar of a day ends at the session close. Every other bar ends at min(start + 60min, session close). On early-close days (13:00 ET) the last bar runs 11:30–13:00, 90 minutes. Detect early closes with `cal.early_closes`. Validated in round 3. Drop or flag rows with NaN OHLC (e.g. 2026-02-02 09:30). Don't use a "next bar's start" rule, because missing bars break it. Flag days with missing bars as data gaps.
+- CLOB window boundaries are inconsistent (validator round 3). Clip client-side to `[start, end)`, tile chunks back to back, and de-duplicate on `t`.
 - yfinance index is America/New_York; convert to UTC.
 
 ## Candidate pairs (to verify in step 2)
