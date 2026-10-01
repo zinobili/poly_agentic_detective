@@ -61,8 +61,9 @@ import yaml
 
 from poly_actor.pairs import (
     et_to_utc,
-    ladder_crossing,
+    monotone_ladder_crossing,
     parse_cpi_bucket,
+    parse_from_date,
     parse_strike,
 )
 
@@ -468,6 +469,15 @@ CPI_EXCLUDED: dict[str, str] = {
 }
 
 
+def _ceil_hour(iso_z: str) -> str:
+    """Round a UTC ISO time UP to the next whole hour (unchanged if already on the hour)."""
+    dt = datetime.fromisoformat(iso_z.replace("Z", "+00:00"))
+    floor = dt.replace(minute=0, second=0, microsecond=0)
+    if dt > floor:
+        floor += timedelta(hours=1)
+    return floor.isoformat().replace("+00:00", "Z")
+
+
 def _plus_hours(iso_z: str, hours: int) -> str:
     return (
         (datetime.fromisoformat(iso_z.replace("Z", "+00:00")) + timedelta(hours=hours))
@@ -497,6 +507,7 @@ def cpi_event_times_utc() -> dict[str, dict[str, str]]:
 
 
 _NY = ZoneInfo("America/New_York")
+CLOSE_LAG_MAX_H = 24  # A16: earliest closedTime must be 0..24h after the hardcoded event time
 
 
 def _earliest_closed_time(events: list[dict]) -> str | None:
@@ -517,10 +528,13 @@ def check_event_times_against_closed(
     slugs_by_key: dict[str, list[str]],
 ) -> list[dict]:
     """For each RESOLVED event: the release/decision time must fall on the same
-    ET calendar day as, or before, the earliest closedTime. A later ET day means
-    the hardcoded time is wrong (the market cannot close before the event).
+    ET calendar day as, or before, the earliest closedTime, AND (A16, two-sided)
+    the earliest closedTime must be 0..24h after the event time. A later ET day or
+    a negative lag means the hardcoded time is wrong (the market cannot close
+    before the event); a lag over 24h means it is probably the wrong day.
     Prints a warning table of mismatches and returns them (empty list = pass)."""
     bad = []
+    gaps_h: list[float] = []
     n_checked = 0
     for key, t in sorted(times.items()):
         events = [e for e in (get_event(s) for s in slugs_by_key.get(key, [])) if e]
@@ -533,24 +547,35 @@ def check_event_times_against_closed(
         n_checked += 1
         ev_et = datetime.fromisoformat(t[time_field].replace("Z", "+00:00")).astimezone(_NY).date()
         cl_et = datetime.fromisoformat(earliest.replace("Z", "+00:00")).astimezone(_NY).date()
-        if ev_et > cl_et:
+        ev_dt = datetime.fromisoformat(t[time_field].replace("Z", "+00:00"))
+        gap_h = (
+            datetime.fromisoformat(earliest.replace("Z", "+00:00")) - ev_dt
+        ).total_seconds() / 3600
+        gaps_h.append(gap_h)
+        if ev_et > cl_et or not (0 <= gap_h <= CLOSE_LAG_MAX_H):
             bad.append(
                 {
                     "series": label,
                     "key": key,
                     "event_time_utc": t[time_field],
                     "earliest_closed_utc": earliest,
+                    "closed_minus_event_h": round(gap_h, 2),
                 }
             )
     print(
-        f"  cross-check {label}: {n_checked} resolved events checked, {len(bad)} mismatches",
+        f"  cross-check {label}: {n_checked} resolved events checked, {len(bad)} mismatches; "
+        f"closedTime - event time in [{min(gaps_h, default=0):.1f}h, {max(gaps_h, default=0):.1f}h] "
+        f"(required 0..{CLOSE_LAG_MAX_H}h)",
         file=sys.stderr,
     )
     if bad:
-        print("  WARNING: event time falls AFTER earliest closedTime (ET day):", file=sys.stderr)
+        print(
+            f"  WARNING: event time falls after earliest closedTime, or closedTime is > {CLOSE_LAG_MAX_H}h later:",
+            file=sys.stderr,
+        )
         for b in bad:
             print(
-                f"    {b['series']} {b['key']}: event {b['event_time_utc']} > closed {b['earliest_closed_utc']}",
+                f"    {b['series']} {b['key']}: event {b['event_time_utc']} vs closed {b['earliest_closed_utc']} ({b['closed_minus_event_h']}h)",
                 file=sys.stderr,
             )
     return bad
@@ -892,17 +917,23 @@ def build_btc() -> dict:
                 }
             )
             continue
-        up, dip = [], []
+        up, dip, relisted_rungs = [], [], []
         for m in e["markets"]:
             q = m.get("question", "")
             strike = parse_strike(q)
             tok, price = _yes(m)
             direction = "dip" if "dip" in q.lower() else "reach"
+            created = _iso(m["createdAt"])
+            from_d = parse_from_date(m["slug"], y)
             rec = _Flow(
                 {
                     "slug": m["slug"],
                     "token_id_yes": tok,
                     "strike_usd": strike,
+                    "created_utc": created,
+                    "from_date_utc": et_to_utc(from_d, (0, 0)) if from_d else None,
+                    "relisted": from_d is not None,
+                    "rung_usable_from_utc": _plus_hours(created, BTC_MIN_EVENT_AGE_H),
                     "volume_usd_lifetime_at_pull_DO_NOT_FILTER_ON": _vol(m.get("volume")),
                     "closed_time": _iso(m.get("closedTime")),
                     "resolved_yes": (price >= 0.5)
@@ -910,7 +941,11 @@ def build_btc() -> dict:
                     else None,
                 }
             )
-            (dip if direction == "dip" else up).append(rec)
+            if from_d is not None:
+                rec["direction"] = direction
+                relisted_rungs.append(rec)
+            else:
+                (dip if direction == "dip" else up).append(rec)
         up.sort(key=lambda r: r["strike_usd"])
         dip.sort(key=lambda r: -r["strike_usd"])
         month_start = et_to_utc((y, mo, 1), (0, 0))
@@ -939,12 +974,41 @@ def build_btc() -> dict:
                 ),
                 "resolved": bool(e["closed"]),
                 "volume_usd": _vol(e.get("volume")),
+                "usable": bool(up) and bool(dip),
+                "exclusion_reason": None
+                if (up and dip)
+                else "no whole-month "
+                + ("dip" if up else "reach")
+                + " rungs (one-sided ladder; no signal)",
                 "n_up_rungs": len(up),
                 "n_dip_rungs": len(dip),
+                "n_relisted_rungs_excluded": len(relisted_rungs),
+                "relisted_rungs_excluded": relisted_rungs,
                 "up_ladder": up,
                 "dip_ladder": dip,
             }
         )
+    for m in months:
+        if not m["usable"]:
+            gaps.append(
+                {
+                    "month": m["month"],
+                    "event_slug": m["event_slug"],
+                    "reason": m["exclusion_reason"],
+                }
+            )
+    gaps.sort(key=lambda g: g["month"])
+    usable_months = [m for m in months if m["usable"]]
+    first_active = usable_months[0]["first_usable_utc"]
+    aff = [m for m in months if m["n_relisted_rungs_excluded"]]
+    relisted_summary = {
+        "n_relisted_rungs_excluded": sum(m["n_relisted_rungs_excluded"] for m in months),
+        "n_whole_month_rungs_kept": sum(m["n_up_rungs"] + m["n_dip_rungs"] for m in months),
+        "n_months_affected": len(aff),
+        "months_affected": {m["month"]: m["n_relisted_rungs_excluded"] for m in aff},
+        "note": "Relisted rungs are re-created touched strikes that count only from a later date (A15); never used.",
+    }
+    print(f"  BTC relisted: {relisted_summary}", file=sys.stderr)
     # Illustrative ladder-implied levels on the cached active-month snapshot.
     snap = _event("what-price-will-bitcoin-hit-in-october-2026")
     sample = None
@@ -954,7 +1018,9 @@ def build_btc() -> dict:
             q = m.get("question", "")
             tok, price = _yes(m)
             s = parse_strike(q)
-            if s is None:
+            if (
+                s is None or parse_from_date(m["slug"], 2026) is not None
+            ):  # A15: whole-month rungs only
                 continue
             if m.get("closed"):
                 # time-t rule: a touched (Yes) rung is P=1 after its closedTime; a No rung is dropped.
@@ -962,9 +1028,7 @@ def build_btc() -> dict:
                     continue
                 price = 1.0
             (dpr if "dip" in q.lower() else upr).append((s, price))
-        upr.sort()
-        dpr.sort(key=lambda r: -r[0])
-        k_up, k_dn = ladder_crossing(upr), ladder_crossing(dpr)
+        k_up, k_dn = monotone_ladder_crossing(upr, "up"), monotone_ladder_crossing(dpr, "dip")
         sample = {
             "event_slug": snap["slug"],
             "note": (
@@ -1018,13 +1082,17 @@ def build_btc() -> dict:
         "signal": {
             "name": "btc_ladder_level_and_skew",
             "per_hour_procedure": [
-                f"A rung counts at hour t only if its event has been open for at least {BTC_MIN_EVENT_AGE_H}h (t >= gamma_start + {BTC_MIN_EVENT_AGE_H}h; see first_usable_utc) AND the rung is open at t (t < closed_time or closed_time null). A rung touched earlier (resolved_yes true) is treated as P=1 for t >= closed_time (so 0.5 stays bracketed); a rung that closed No is dropped after closed_time. NO lifetime-volume filter: lifetime volume is only known at pull time (look-ahead). Step 3 may add cumulative-volume-to-t (computed from trades, if available) as a time-t liquidity filter.",
-                "Up-ladder: rungs 'reach $K' ordered by K ascending (P non-increasing). Find the strike K_up* where P=0.5 by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
+                "WHOLE-MONTH RUNGS ONLY (A15): re-listed 'from-date' rungs (slug ends -from-<month>-<day>; relisted=true) are excluded and recorded under relisted_rungs_excluded; they never enter a ladder.",
+                f"A rung counts at hour t only if its event has been open for at least {BTC_MIN_EVENT_AGE_H}h (t >= gamma_start + {BTC_MIN_EVENT_AGE_H}h; see first_usable_utc) AND the RUNG ITSELF is at least {BTC_MIN_EVENT_AGE_H}h old (t >= created_utc + {BTC_MIN_EVENT_AGE_H}h = rung_usable_from_utc; A15) AND the rung is open at t (t < closed_time or closed_time null). A rung touched earlier (resolved_yes true) is treated as P=1 for t >= closed_time (so 0.5 stays bracketed); a rung that closed No is dropped after closed_time. NO lifetime-volume filter: lifetime volume is only known at pull time (look-ahead). Step 3 may add cumulative-volume-to-t (computed from trades, if available) as a time-t liquidity filter.",
+                "Up-ladder: rungs 'reach $K' ordered by K ascending (P non-increasing). Before interpolating, apply isotonic regression (pool-adjacent-violators, unit weights) to the hour's rung probabilities: non-increasing in strike on the up-ladder, non-decreasing in strike on the dip-ladder (A15; poly_actor.pairs.monotone_ladder_crossing). Then take the FIRST crossing of 0.5 walking away from spot and find the strike K_up* by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
                 "Dip-ladder: rungs 'dip to $K' ordered by K descending; find K_dn* where P=0.5 the same way.",
                 "ladder_level = exp((ln K_up* + ln K_dn*)/2); half_width = (ln K_up* - ln K_dn*)/2.",
                 "skew = ln K_up* + ln K_dn* - 2*ln(S_t) with S_t = BTC-USD spot (positive = upside rungs further away than downside rungs relative to spot).",
             ],
             "min_event_age_hours": BTC_MIN_EVENT_AGE_H,
+            "min_rung_age_hours": BTC_MIN_EVENT_AGE_H,
+            "ladder_monotone_fit": "isotonic regression (PAVA) per ladder per hour before the 0.5 crossing (A15)",
+            "relisted_rungs": "excluded; recorded per month (relisted_rungs_excluded) and summarised in coverage.relisted_summary (A15)",
             "dropped_hours_metric": "step 3 reports the share of hours dropped (0.5 not bracketed, no usable rungs, month-start gap) per month and overall",
             "primary_signal": "hourly change in ln(ladder_level)",
             "why_not_nearest_0.5_reach_threshold": (
@@ -1045,11 +1113,12 @@ def build_btc() -> dict:
         "trading_hours_note": TRADING_HOURS_NOTE_BTC,
         "coverage": {
             "stock_window_start_utc": STOCK_WINDOW_START,
-            "signal_first_active_utc": months[0]["first_usable_utc"],
+            "signal_first_active_utc": first_active,
             "signal_last_active_through": TODAY,
             "gaps": gaps,
+            "relisted_summary": relisted_summary,
             "note": (
-                "Months with no Gamma event have no ladder signal; hours in those months are dropped (no splice "
+                "Months with no Gamma event, or with only one whole-month ladder (2024-11, 2024-12: no dip rungs; A17), have no ladder signal; hours in those months are dropped (no splice "
                 "across the gap). MONTH-START GAP: the new month's event opens up to ~2 days after the month "
                 "begins (see event_open_lag_hours_after_month_start) and the previous event rolls out at month "
                 "end + 1h, so hours between roll_utc and first_usable_utc (event open + 24h) carry no signal "
@@ -1109,19 +1178,22 @@ def _bk(part: dict, label: str) -> dict:
 
 def _merged(spec: list[tuple]) -> list[dict]:
     """spec items: (part, label) take the bucket as-is; or
-    ('derived', label, center, kind, plus[(part,label)], minus[(part,label)])."""
+    ('derived', label, center, kind, plus[(part,label)], minus[(part,label)], width)."""
     out = []
     for item in spec:
         if item[0] == "derived":
-            _, label, center, kind, plus, minus = item
+            _, label, center, kind, plus, minus, width = item
             out.append(
                 _Flow(
                     {
                         "label": label,
                         "kind": kind,
                         "center": center,
+                        "width": width,
+                        "validation_tolerance": round(width / 2, 4),
                         "derived": True,
                         "p_formula": "max(0, sum(plus) - sum(minus))",
+                        "clip_binding_metric": "step 3 logs the share of hours where the max(0, ...) clip binds (sum(plus) < sum(minus))",
                         "plus_tokens": [_bk(p, lb)["token_id_yes"] for p, lb in plus],
                         "minus_tokens": [_bk(p, lb)["token_id_yes"] for p, lb in minus],
                     }
@@ -1171,9 +1243,10 @@ def build_cpi() -> dict:
                         "derived",
                         "2.7-2.8",
                         2.75,
-                        "point",
+                        "range",
                         [(a, ">=2.7")],
                         [(b, "2.9"), (b, "3.0"), (b, "3.1"), (b, ">=3.2")],
+                        0.2,
                     ),
                     (b, "2.9"),
                     (b, "3.0"),
@@ -1218,6 +1291,17 @@ def build_cpi() -> dict:
             merged = [
                 _Flow({**b, "from_event": parts[0]["event_slug"]}) for b in parts[0]["buckets"]
             ]
+        # A18: merged signal defined only from the hour every companion event is open.
+        latest_open = max(p["gamma_start"] for p in parts)
+        first_usable = max(prev_roll, _ceil_hour(latest_open))
+        companion_drop = None
+        if len(parts) > 1:
+            earliest_open = min(p["gamma_start"] for p in parts)
+            companion_drop = {
+                "from_utc": max(prev_roll, earliest_open),
+                "to_utc": first_usable,
+                "reason": "not every companion event is open yet; those hours are dropped (A18)",
+            }
         winners = [b for b in merged if not b.get("derived") and b.get("final_yes_price", 0) >= 0.5]
         resolved = all(p["resolved"] for p in parts)
         t = times.get(key)
@@ -1226,6 +1310,8 @@ def build_cpi() -> dict:
             "release_time_utc": t["release_utc"] if t else None,
             "roll_utc": t["roll_utc"] if t else None,
             "use_from_utc": prev_roll,
+            "first_usable_utc": first_usable,
+            "companion_dropped_hours": companion_drop,
             "resolved": resolved,
             "winning_bucket": winners[-1]["label"] if (resolved and winners) else None,
             "winning_bucket_center": winners[-1]["center"] if (resolved and winners) else None,
@@ -1265,8 +1351,11 @@ def build_cpi() -> dict:
                 "For each resolved month, the implied CPI at release_time_utc - 1h must lie within one "
                 "bucket width (0.1pp; for an edge winner, within 0.1pp beyond the boundary) of the winning "
                 "bucket's centre in a majority of months, else the method is revised BEFORE any stock "
-                "returns are examined."
+                "returns are examined. A derived 'range' bucket (2026-01 '2.7-2.8', width 0.2, centre 2.75) "
+                "uses tolerance = half its width (0.1pp) (A19)."
             ),
+            "companion_events": "merged signal for a month is defined only from first_usable_utc = the hour when every companion event is open; earlier hours are dropped (companion_dropped_hours; A18)",
+            "derived_bucket_clip": "p = max(0, sum(plus) - sum(minus)); step 3 logs how often the clip binds (A19)",
         },
         "roll_rule": {
             "rule": (

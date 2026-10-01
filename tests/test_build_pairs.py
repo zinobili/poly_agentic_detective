@@ -9,7 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from poly_actor.pairs import et_to_utc, ladder_crossing, parse_cpi_bucket, parse_strike
+from poly_actor.pairs import (
+    et_to_utc,
+    isotonic_fit,
+    ladder_crossing,
+    monotone_ladder_crossing,
+    parse_cpi_bucket,
+    parse_from_date,
+    parse_strike,
+)
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "build_pairs.py"
 
@@ -133,6 +141,98 @@ def test_ladder_touched_rung_as_one_keeps_bracket():
     k = ladder_crossing([(80000.0, 1.0), (90000.0, 0.3)])
     assert k is not None
     assert 80000 < k < 90000
+
+
+# ---- A15: isotonic ladder + relisted rungs -----------------------------------------
+def test_isotonic_fit_pools_violators():
+    assert isotonic_fit([0.9, 0.3, 0.5, 0.1], increasing=False) == pytest.approx(
+        [0.9, 0.4, 0.4, 0.1]
+    )
+    assert isotonic_fit([0.1, 0.5, 0.3, 0.9], increasing=True) == pytest.approx(
+        [0.1, 0.4, 0.4, 0.9]
+    )
+    assert isotonic_fit([], increasing=True) == []
+
+
+def test_monotone_crossing_non_monotone_up_ladder():
+    # 90k is 0.2 but 95k is 0.6: violates monotonicity; pooled to 0.4 each
+    rungs = [(100000.0, 0.1), (90000.0, 0.2), (95000.0, 0.6), (80000.0, 0.9)]
+    k = monotone_ladder_crossing(rungs, "up")
+    # fit by strike: 80k 0.9, 90k 0.4, 95k 0.4, 100k 0.1 -> first crossing in (80k, 90k)
+    w = (0.9 - 0.5) / (0.9 - 0.4)
+    assert k == pytest.approx(math.exp(math.log(80000) + w * (math.log(90000) - math.log(80000))))
+
+
+def test_monotone_crossing_dip_ladder_non_decreasing_in_strike():
+    # dip: P grows with strike. 70k noisy-high (0.5) above 75k (0.3)
+    rungs = [(60000.0, 0.1), (70000.0, 0.5), (75000.0, 0.3), (80000.0, 0.8)]
+    k = monotone_ladder_crossing(rungs, "dip")
+    # fit by strike: 0.1, 0.4, 0.4, 0.8 -> walking down from 80k: crossing in (75k, 80k)
+    w = (0.8 - 0.5) / (0.8 - 0.4)
+    assert k == pytest.approx(math.exp(math.log(80000) + w * (math.log(75000) - math.log(80000))))
+    assert 75000 < k < 80000
+
+
+def test_monotone_crossing_ties_and_no_crossing():
+    # duplicate strike averaged (0.8 and 0.4 -> 0.6)
+    k = monotone_ladder_crossing([(90000.0, 0.8), (90000.0, 0.4), (100000.0, 0.2)], "up")
+    assert k is not None
+    assert 90000 < k < 100000
+    assert monotone_ladder_crossing([(90000.0, 0.3), (100000.0, 0.1)], "up") is None
+    assert monotone_ladder_crossing([(90000.0, 0.9), (100000.0, 0.7)], "up") is None
+    assert monotone_ladder_crossing([(90000.0, 0.9), (100000.0, 0.3)], "dip") is None
+    assert monotone_ladder_crossing([], "up") is None
+    with pytest.raises(ValueError, match="ladder"):
+        monotone_ladder_crossing([(1.0, 0.5)], "sideways")
+
+
+def test_monotone_matches_plain_on_monotone_input():
+    up = [(80000.0, 0.8), (100000.0, 0.2)]
+    assert monotone_ladder_crossing(up, "up") == pytest.approx(ladder_crossing(up))
+    dip = [(60000.0, 0.2), (80000.0, 0.8)]
+    assert monotone_ladder_crossing(dip, "dip") == pytest.approx(ladder_crossing(dip[::-1]))
+
+
+def test_parse_from_date():
+    s = "will-bitcoin-reach-65k-in-august-2026-from-august-6"
+    assert parse_from_date(s, 2026) == (2026, 8, 6)
+    assert parse_from_date("will-bitcoin-dip-to-62pt5k-in-august-2026-from-august-2", 2026) == (
+        2026,
+        8,
+        2,
+    )
+    assert parse_from_date("will-bitcoin-reach-100k-in-august-2026", 2026) is None
+    assert parse_from_date("will-bitcoin-reach-65k-in-june-2026-from-june-8-887", 2026) == (
+        2026,
+        6,
+        8,
+    )
+
+
+def test_ceil_hour(script):
+    assert script._ceil_hour("2026-01-14T22:42:10Z") == "2026-01-14T23:00:00Z"
+    assert script._ceil_hour("2026-03-11T17:33:00Z") == "2026-03-11T18:00:00Z"
+    assert script._ceil_hour("2026-03-11T18:00:00Z") == "2026-03-11T18:00:00Z"
+
+
+def test_built_yaml_invariants():
+    import yaml
+
+    d = yaml.safe_load((SCRIPT.parent.parent / "config" / "pairs.yaml").read_text(encoding="utf-8"))
+    pairs = {p["id"]: p for p in d["pairs"]}
+    btc = pairs["bitcoin_monthly_ladder"]
+    for m in btc["markets"]:
+        for r in m["up_ladder"] + m["dip_ladder"]:
+            assert not r["relisted"] and r["from_date_utc"] is None
+        assert all(r["relisted"] for r in m["relisted_rungs_excluded"])
+    assert btc["coverage"]["relisted_summary"]["n_months_affected"] == 5
+    assert btc["coverage"]["signal_first_active_utc"] == "2025-01-03T19:21:06Z"
+    cpi = {m["month"]: m for m in pairs["us_cpi_inflation"]["markets"]}
+    assert cpi["2026-01"]["first_usable_utc"] == "2026-01-14T23:00:00Z"
+    assert cpi["2026-03"]["first_usable_utc"] == "2026-03-11T18:00:00Z"
+    derived = [b for b in cpi["2026-01"]["buckets"] if b.get("derived")][0]
+    assert (derived["kind"], derived["width"], derived["center"]) == ("range", 0.2, 2.75)
+    assert derived["validation_tolerance"] == pytest.approx(0.1)
 
 
 # ---- hardcoded event-time tables -------------------------------------------------

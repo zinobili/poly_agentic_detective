@@ -53,6 +53,63 @@ def ladder_crossing(rungs: list[tuple[float, float]]) -> float | None:
     return None
 
 
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august",
+           "september", "october", "november", "december"]  # fmt: skip
+
+
+def parse_from_date(slug: str, year: int) -> tuple[int, int, int] | None:
+    """Relisted BTC rung slugs end in '-from-<month>-<day>' (optionally followed by a
+    numeric de-dup suffix), e.g. 'will-bitcoin-reach-65k-in-august-2026-from-august-6'.
+    -> (year, month, day), or None for a whole-month rung. `year` is the event's year."""
+    m = re.search(r"-from-([a-z]+)-(\d{1,2})(?:-\d+)?$", slug)
+    if not m or m.group(1) not in _MONTHS:
+        return None
+    return (year, _MONTHS.index(m.group(1)) + 1, int(m.group(2)))
+
+
+def isotonic_fit(values: list[float], increasing: bool) -> list[float]:
+    """Least-squares monotone fit (pool-adjacent-violators, unit weights).
+
+    `values` are in the given order; the fit is non-decreasing if `increasing`
+    else non-increasing along that order."""
+    sign = 1.0 if increasing else -1.0
+    blocks: list[list[float]] = []  # each block: [sum, count]
+    for v in values:
+        blocks.append([sign * v, 1.0])
+        while len(blocks) > 1 and blocks[-2][0] / blocks[-2][1] > blocks[-1][0] / blocks[-1][1]:
+            s, n = blocks.pop()
+            blocks[-1][0] += s
+            blocks[-1][1] += n
+    out: list[float] = []
+    for s, n in blocks:
+        out.extend([sign * s / n] * int(n))
+    return out
+
+
+def monotone_ladder_crossing(rungs: list[tuple[float, float]], ladder: str) -> float | None:
+    """Well-defined P=0.5 crossing of a BTC touch ladder (amendment A15).
+
+    rungs = [(strike, P)] in any order; `ladder` is 'up' (reach K: P must be
+    non-increasing in strike) or 'dip' (dip to K: P non-decreasing in strike).
+    Steps: sort by strike (equal strikes are averaged), isotonic-regress P onto
+    the required monotone direction, then take the FIRST crossing of 0.5 walking
+    away from spot (up: ascending strike; dip: descending strike) with the same
+    log-strike interpolation as `ladder_crossing`. None if 0.5 is not bracketed.
+    """
+    if ladder not in ("up", "dip"):
+        raise ValueError(f"ladder must be 'up' or 'dip', got {ladder!r}")
+    by_k: dict[float, list[float]] = {}
+    for k, p in rungs:
+        by_k.setdefault(k, []).append(p)
+    ks = sorted(by_k)
+    ps = [sum(by_k[k]) / len(by_k[k]) for k in ks]
+    fit = isotonic_fit(ps, increasing=(ladder == "dip"))
+    pairs = list(zip(ks, fit, strict=True))
+    if ladder == "dip":
+        pairs.reverse()
+    return ladder_crossing(pairs)
+
+
 def parse_cpi_bucket(q: str) -> tuple[str, str, float, float]:
     """-> (label, kind, bound, center). Edge centres = boundary -/+ 0.1.
 

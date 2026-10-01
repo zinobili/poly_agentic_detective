@@ -173,6 +173,22 @@ closedTime.
   to a terminal No as dates pass, awkward for a continuous signal.
 - **`recession` and `macro-inflation` tags**: nearly empty/abandoned; the real series sit under other tags/slugs.
 
+## Round 4 changes (pre-registration A15 to A19)
+
+- **BTC re-listed rungs (A15).** Since mid-2025 Polymarket re-lists touched strikes as `...-from-<month>-<day>` rungs that
+  count only from a later date. In the cache: 50 such rungs in 5 months (2026-05: 5, 2026-06: 5, 2026-07: 7,
+  2026-08: 17, 2026-09: 16), against 405 whole-month rungs kept. They are excluded (recorded per month in
+  `relisted_rungs_excluded`, summarised in `coverage.relisted_summary`). Each kept rung carries `created_utc`,
+  `from_date_utc` (null), `relisted` (false) and `rung_usable_from_utc` (created + 24h; the 24h age rule is per rung).
+  The ladder crossing is made well defined by isotonic regression before the 0.5 crossing
+  (`poly_actor.pairs.monotone_ladder_crossing`, unit tested).
+- **Date cross-check (A16)** is two-sided (0 to 24h after the event time; observed 2.0h to 4.7h).
+- **CPI companions (A18):** `first_usable_utc` per month; 2026-01 from 2026-01-14T23:00Z, 2026-03 from 2026-03-11T18:00Z.
+- **Derived 2.7-2.8 bucket (A19):** `range`, width 0.2, centre 2.75, tolerance 0.1pp; clip-binding rate is a step-3 metric.
+- **BTC first active (A17):** 2024-11 and 2024-12 have no dip rungs and are gaps; the signal starts 2025-01-03T19:21:06Z.
+- **Gamma volume fields look unreliable.** For example the Fed Mar 2026 `no_change` bucket shows `volume_usd: 0.0` while
+  `increase_25bp` shows about $173M. Volumes in the yaml are descriptive only; no signal, filter or roll uses them.
+
 ## Open risks
 
 1. Per-month slug enumeration for BTC/CPI could miss an event with an unguessable suffix (CPI Aug-2026 was exactly
