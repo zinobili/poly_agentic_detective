@@ -24,7 +24,8 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 Do not mark a step done without a validator report. Check in with the user after step 0; afterwards continue, but always validate.
 
 ## Usage guard (5-hour plan limit)
-Usage % can't be checked from inside a session, so the plan limit can hit without warning. Stay resumable instead:
+In the desktop app, `mcp__ccd_session_mgmt__get_usage` reports the 5-hour % (not available in a plain terminal session). The limit can still hit between checks, so stay resumable:
+- **Reminder:** when reporting to the user at a workflow boundary, check `get_usage`; if the 5-hour window is ≥ 85%, add one line: `⚠ 5-hour usage at N%, resets HH:MM UTC`. Below 85%, say nothing.
 - At every workflow boundary (before starting a step, before spawning an agent, after each agent returns), keep a `## Resume here` section at the top of `docs/progress.md` current: date, current step and workflow stage, what's done, what's half-done (files touched), exact next action, open validator findings, what's waiting on the user.
 - Prefer one big agent at a time over several in parallel, and keep agent briefs scoped and lean.
 - When the user says usage is near the limit: finish the current small task, update the resume note, don't spawn new agents, and end the turn.
