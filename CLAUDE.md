@@ -14,7 +14,7 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 - **Tests never hit the network** unless marked `@pytest.mark.live`. Use saved responses in `tests/fixtures/`.
 - **Raw data is immutable.** Ingestion writes to `data/raw/`; derived data goes to `data/clean/`. Never delete raw.
 - **Paper only.** No code that places real orders or moves real money.
-- **Secrets** live in `.env` (git-ignored, blocked by hook). Document new keys in `.env.example`.
+- **Secrets** live in `.env` (git-ignored). Document new keys in `.env.example`. The `.claude/hooks/guard.py` hook is a **best-effort guard rail**, not a security boundary. It matches literal text in tool inputs, so an indirect read (e.g. a script that opens the file, or the `.env` values `config.py` loads into the environment) is not blocked. Never print, log or commit secrets.
 - Every market→ticker pair in `config/pairs.yaml` needs a written rationale.
 
 ## Workflow (every step)

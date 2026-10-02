@@ -9,7 +9,24 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Edit(./.env)"
+      "Edit(./.env)",
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Read(**/.env.local)",
+      "Edit(**/.env.local)",
+      "Read(**/.env.*.local)",
+      "Edit(**/.env.*.local)",
+      "Read(**/.env.prod*)",
+      "Edit(**/.env.prod*)",
+      "Read(**/.env.dev*)",
+      "Edit(**/.env.dev*)",
+      "Read(**/.env.test*)",
+      "Edit(**/.env.test*)",
+      "Bash(cat *.env*)",
+      "Bash(type *.env*)",
+      "Bash(Get-Content *.env*)",
+      "PowerShell(Get-Content *.env*)",
+      "PowerShell(cat *.env*)"
     ]
   },
   "hooks": {
