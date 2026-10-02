@@ -43,6 +43,8 @@ from poly_actor.ingest.common import (
     IngestError,
     Interval,
     Manifest,
+    base_record,
+    failed_record,
     iso,
     sha256_hex,
     subtract_intervals,
@@ -235,21 +237,16 @@ def run_stocks(
             if stats.calls:
                 sleep(pause)
             stats.calls += 1
-            rec = {
-                "source": "yfinance",
-                "ticker": tk,
-                "interval": "1h",
-                "start_ts": s,
-                "end_ts": e,
-                "fetched_at": now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            }
+            rec = base_record(
+                now, source="yfinance", ticker=tk, interval="1h", start_ts=s, end_ts=e
+            )
             try:
                 raw = fetch(tk, s, e)
                 df = parse_bars(raw, s, e)
                 if len(df) == 0 and expects_rows(tk, s, e):
                     raise EmptyFrameError(f"empty frame for {tk} {iso(s)}..{iso(e)}")
             except (IngestError, ValueError) as exc:
-                rec.update(status="failed", error=str(exc)[:300])
+                rec = failed_record(rec, exc)
                 manifest.append(rec)
                 stats.failures.append(rec)
                 log(f"FAIL {tk} {iso(s)}: {exc}")

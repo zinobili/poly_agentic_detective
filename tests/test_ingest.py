@@ -469,3 +469,32 @@ def test_parallel_workers_match_sequential_run(tmp_path):
         specs, raw_dir=tmp_path / "par", fetch=_fake_fetch_factory(body, []), workers=4, **kw
     )
     assert s5.calls == 0
+
+
+def test_manifest_view_raises_on_interior_corruption(tmp_path):
+    import json
+
+    import duckdb
+
+    m = tmp_path / "polymarket" / "_manifest.jsonl"
+    m.parent.mkdir(parents=True)
+    good = json.dumps({"status": "ok", "start_ts": 1, "end_ts": 2})
+    m.write_text(f"{good}\n{{not json\n{good}\n", encoding="utf-8")
+    con = duckdb.connect()
+    with pytest.raises(json.JSONDecodeError):
+        create_raw_views(con, tmp_path)
+
+
+def test_manifest_view_accepts_torn_final_line(tmp_path):
+    import json
+
+    import duckdb
+
+    m = tmp_path / "polymarket" / "_manifest.jsonl"
+    m.parent.mkdir(parents=True)
+    good = json.dumps({"status": "ok", "start_ts": 1, "end_ts": 2})
+    m.write_text(f'{good}\n{{"status": "o', encoding="utf-8")
+    con = duckdb.connect()
+    create_raw_views(con, tmp_path)
+    n_ok = con.execute("SELECT count(*) FROM raw_manifest_polymarket WHERE status='ok'")
+    assert n_ok.fetchone()[0] == 1

@@ -6,6 +6,9 @@
 - Minors carried to docs/handoff/step4.md.
 - Next action: on the user's OK → Step 4 (alignment) per docs/handoff/step4.md: builder = data-engineer; first validation on opus.
 - 2026-10-03 user: accept step 3 (option 1). Push to GitHub only after tests plus a professional-standards review → new agent clean-code-crusader. Now: crusader full audit → fix blockers/majors → check.sh → push → Step 4.
+- Crusader full audit r1: SHIP WITH FIXES, 0 blockers, 5 majors (docs/reviews/push_2026-10-03_crusader_r1.md). data-engineer fixing majors 1-4 (CLI tests, manifest view corruption check, run_polymarket split, build_pairs.py → src/poly_actor/pairs_build/ with byte-identical yaml). Major 5 (guard hook literal-only): documented as best-effort in CLAUDE.md; extending settings.json deny rules needs the user's OK.
+- Next: builder report → crusader r2 (scoped) → check.sh → push → Step 4.
+- Major 5 done (user OK 2026-10-03): 19 deny rules in .claude/settings.json + best-effort note in CLAUDE.md, commit 1cff00c.
 - Waiting on user: nothing.
 
 | Step | Status | Validator | Notes |
@@ -22,6 +25,7 @@
 
 ## Decision log
 - 2026-10-01: yfinance first; Claude proposes famous pairs; build first, explain after; check in after step 0; 4 agents (data-engineer, quant-researcher, validator, tutor); venv+pip since uv isn't installed.
+- 2026-10-03: dashboard design agreed for a lay reader (answer first, scorecard, confidence meter, every chart states its takeaway, sticky pair tabs that keep scroll position). Reference for steps 5–7: `docs/design/dashboard_ux.md` + `docs/design/dashboard_mockup.html` (made-up data).
 
 ## Waiting on user (work continues on unblocked items meanwhile)
 - [x] 2026-10-01: user approved commits. Step 0 committed (3771e65). Steps 1 and 2 get committed once their validators pass (approved). Ask before committing later steps if unclear; never push without asking.

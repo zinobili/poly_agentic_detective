@@ -3,7 +3,6 @@ hardcoded event-time tables in scripts/build_pairs.py. No network."""
 
 from __future__ import annotations
 
-import importlib.util
 import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,16 +26,11 @@ from poly_actor.pairs import (
     rung_direction,
     select_ladder,
 )
+from poly_actor.pairs_build import calendars
+from poly_actor.pairs_build.gamma import CacheMiss, GammaClient
+from poly_actor.pairs_build.util import ceil_hour
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "build_pairs.py"
-
-
-@pytest.fixture(scope="module")
-def script():
-    spec = importlib.util.spec_from_file_location("build_pairs", SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+ROOT = Path(__file__).resolve().parent.parent
 
 
 # ---- et_to_utc ---------------------------------------------------------------
@@ -218,16 +212,16 @@ def test_parse_from_date():
     )
 
 
-def test_ceil_hour(script):
-    assert script._ceil_hour("2026-01-14T22:42:10Z") == "2026-01-14T23:00:00Z"
-    assert script._ceil_hour("2026-03-11T17:33:00Z") == "2026-03-11T18:00:00Z"
-    assert script._ceil_hour("2026-03-11T18:00:00Z") == "2026-03-11T18:00:00Z"
+def test_ceil_hour():
+    assert ceil_hour("2026-01-14T22:42:10Z") == "2026-01-14T23:00:00Z"
+    assert ceil_hour("2026-03-11T17:33:00Z") == "2026-03-11T18:00:00Z"
+    assert ceil_hour("2026-03-11T18:00:00Z") == "2026-03-11T18:00:00Z"
 
 
 def test_built_yaml_invariants():
     import yaml
 
-    d = yaml.safe_load((SCRIPT.parent.parent / "config" / "pairs.yaml").read_text(encoding="utf-8"))
+    d = yaml.safe_load((ROOT / "config" / "pairs.yaml").read_text(encoding="utf-8"))
     pairs = {p["id"]: p for p in d["pairs"]}
     btc = pairs["bitcoin_monthly_ladder"]
     for m in btc["markets"]:
@@ -253,8 +247,8 @@ def test_built_yaml_invariants():
 
 
 # ---- hardcoded event-time tables -------------------------------------------------
-def test_fomc_dates_official(script):
-    t = script.fomc_event_times_utc()
+def test_fomc_dates_official():
+    t = calendars.fomc_event_times_utc()
     assert t["2026-10"]["decision_utc"] == "2026-10-28T18:00:00Z"
     assert t["2026-12"]["decision_utc"] == "2026-12-09T19:00:00Z"
     assert t["2027-01"]["decision_utc"] == "2027-01-27T19:00:00Z"
@@ -262,8 +256,8 @@ def test_fomc_dates_official(script):
     assert t["2025-01"]["roll_utc"] == "2025-01-29T20:00:00Z"  # EST + 1h
 
 
-def test_cpi_release_times(script):
-    t = script.cpi_event_times_utc()
+def test_cpi_release_times():
+    t = calendars.cpi_event_times_utc()
     assert t["2025-09"]["release_utc"] == "2025-10-24T12:30:00Z"
     assert t["2026-01"]["release_utc"] == "2026-02-13T13:30:00Z"
     assert t["2026-06"]["release_utc"] == "2026-07-14T12:30:00Z"
@@ -271,19 +265,43 @@ def test_cpi_release_times(script):
     assert t["2026-09"]["release_utc"] == "2026-10-14T12:30:00Z"
     assert t["2024-11"]["release_utc"] == "2024-12-11T13:30:00Z"
     assert "2025-10" not in t  # no BLS release (shutdown)
-    assert "2025-10" in script.CPI_EXCLUDED
+    assert "2025-10" in calendars.CPI_EXCLUDED
 
 
-def test_cache_miss_raises_without_network(script, monkeypatch):
-    monkeypatch.setattr(script, "REFETCH", False)
-    monkeypatch.setattr(script, "FETCH_SLUGS", set())
-
+def test_cache_miss_raises_without_network(tmp_path):
     def boom(*a, **k):
         raise AssertionError("network touched")
 
-    monkeypatch.setattr(script.requests, "get", boom)
-    with pytest.raises(script.CacheMiss):
-        script.get_event("definitely-not-a-cached-slug-xyz")
+    gamma = GammaClient(tmp_path, get=boom)
+    with pytest.raises(CacheMiss):
+        gamma.get_event("definitely-not-a-cached-slug-xyz")
+
+
+def test_gamma_retries_through_shared_helper_and_caches(tmp_path):
+    """429 then 200: retried with backoff via request_json_with_retry; the dump is cached."""
+    calls = []
+
+    class Resp:
+        def __init__(self, status, body=None):
+            self.status_code, self._body = status, body
+            self.content = b"[]"
+            self.headers = {}
+            self.text = ""
+
+        def json(self):
+            return self._body
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(params)
+        return Resp(429) if len(calls) == 1 else Resp(200, [{"slug": "x"}])
+
+    sleeps = []
+    gamma = GammaClient(tmp_path, fetch_slugs={"x"}, get=fake_get, sleep=sleeps.append)
+    assert gamma.get_event("x") == {"slug": "x"}
+    assert len(calls) == 2 and sleeps[0] == 1.0  # backoff after the 429, then the polite sleep
+    assert gamma.call_count == 1
+    offline = GammaClient(tmp_path, get=fake_get)
+    assert offline.get_event("x") == {"slug": "x"} and len(calls) == 2  # served from cache
 
 
 # ---- A20: time-t BTC rung selection ----------------------------------------------
@@ -460,7 +478,7 @@ def test_detect_partial_window():
 def test_built_yaml_feb_2026_dip_60k_and_inactive_excluded():
     import yaml
 
-    d = yaml.safe_load((SCRIPT.parent.parent / "config" / "pairs.yaml").read_text(encoding="utf-8"))
+    d = yaml.safe_load((ROOT / "config" / "pairs.yaml").read_text(encoding="utf-8"))
     months = {
         m["month"]: m for m in {p["id"]: p for p in d["pairs"]}["bitcoin_monthly_ladder"]["markets"]
     }
@@ -481,7 +499,7 @@ def test_built_yaml_feb_2026_dip_60k_and_inactive_excluded():
 def test_built_yaml_inactive_2025_11_dip_100k():
     import yaml
 
-    d = yaml.safe_load((SCRIPT.parent.parent / "config" / "pairs.yaml").read_text(encoding="utf-8"))
+    d = yaml.safe_load((ROOT / "config" / "pairs.yaml").read_text(encoding="utf-8"))
     btc = {p["id"]: p for p in d["pairs"]}["bitcoin_monthly_ladder"]
     nov = {m["month"]: m for m in btc["markets"]}["2025-11"]
     assert [r["slug"] for r in nov["inactive_excluded"]] == [
@@ -493,7 +511,7 @@ def test_built_yaml_inactive_2025_11_dip_100k():
 def _btc():
     import yaml
 
-    d = yaml.safe_load((SCRIPT.parent.parent / "config" / "pairs.yaml").read_text(encoding="utf-8"))
+    d = yaml.safe_load((ROOT / "config" / "pairs.yaml").read_text(encoding="utf-8"))
     return {p["id"]: p for p in d["pairs"]}["bitcoin_monthly_ladder"]
 
 

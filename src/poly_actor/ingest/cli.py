@@ -117,11 +117,11 @@ def _run(args) -> int:
     )
     for f in fails:
         _log(f"  failed: {f.get('token_id') or f.get('ticker')} {f['error']}")
-    _write_gap_files(specs, min_gap, tickers, wstart, asof)
+    _write_gap_files(specs, min_gap, wstart, asof)
     return 1 if fails else 0
 
 
-def _write_gap_files(specs, min_gap: int, tickers, wstart: int, asof: datetime) -> None:
+def _write_gap_files(specs, min_gap: int, wstart: int, asof: datetime) -> None:
     """gap_inventory.csv (Polymarket) and stock_gaps.csv; both are summaries, never fatal."""
     inv = polymarket.gap_inventory(RAW_DIR, {sp.token_id for sp in specs}, min_gap)
     _write_scratch(inv, "gap_inventory.csv")

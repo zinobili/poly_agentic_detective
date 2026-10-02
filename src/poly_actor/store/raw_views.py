@@ -13,6 +13,7 @@ from pathlib import Path
 import duckdb
 
 from poly_actor.config import RAW_DIR
+from poly_actor.ingest.common import Manifest
 
 _FN = "replace(filename, chr(92), '/')"  # Windows-safe path
 _PM_COLS = "CAST(NULL AS VARCHAR) token_id, CAST(NULL AS INTEGER) fidelity, CAST(NULL AS BIGINT) t, CAST(NULL AS TIMESTAMPTZ) ts, CAST(NULL AS DOUBLE) p"  # noqa: E501
@@ -52,6 +53,9 @@ def create_raw_views(con: duckdb.DuckDBPyConnection, raw_dir: Path = RAW_DIR) ->
     for src, name in (("polymarket", "raw_manifest_polymarket"), ("stocks", "raw_manifest_stocks")):
         m = raw / src / "_manifest.jsonl"
         if m.exists() and m.stat().st_size:
+            # Same validation as the ingest logic: real corruption raises here. DuckDB's
+            # ignore_errors then only skips the torn lines that read() has already accepted.
+            Manifest(m).read()
             con.execute(
                 f"CREATE OR REPLACE VIEW {name} AS "
                 f"SELECT * FROM read_json_auto('{m.as_posix()}', "

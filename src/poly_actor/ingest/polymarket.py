@@ -44,6 +44,8 @@ from poly_actor.ingest.common import (
     IngestError,
     Interval,
     Manifest,
+    base_record,
+    failed_record,
     iso,
     merge_intervals,
     request_json_with_retry,
@@ -173,6 +175,15 @@ def spec_coverage(records: list[dict], spec: TokenSpec) -> list[Interval]:
     return out
 
 
+_FETCH_ERRORS = (IngestError, ValueError, KeyError, requests.RequestException)
+
+
+def _base_record(token_id: str, fidelity: int, s: int, e: int, now: Callable[[], Any]) -> dict:
+    return base_record(
+        now, source="polymarket", token_id=token_id, fidelity=fidelity, start_ts=s, end_ts=e
+    )
+
+
 def _call_window(
     token_id: str,
     fidelity: int,
@@ -185,14 +196,7 @@ def _call_window(
 ) -> tuple[dict, pd.DataFrame, FetchResult]:
     """One fetch + parse + parquet write. Returns (base manifest record, df, result);
     raises IngestError/ValueError/KeyError/RequestException on failure (caller records it)."""
-    rec = {
-        "source": "polymarket",
-        "token_id": token_id,
-        "fidelity": fidelity,
-        "start_ts": s,
-        "end_ts": e,
-        "fetched_at": now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+    rec = _base_record(token_id, fidelity, s, e, now)
     res = fetch(token_id, s - BOUNDARY_PAD, e, fidelity)
     df = parse_prices_history(res.body, s, e)
     n_raw = len(res.body.get("history") or [])
@@ -207,6 +211,133 @@ def _call_window(
         file_existed=bool(len(df)) and not wrote,
     )
     return rec, df, res
+
+
+class _Run:
+    """State and per-window steps of one `run_polymarket` call. The lock guards manifest
+    appends and stats when several workers share the run."""
+
+    def __init__(
+        self,
+        *,
+        raw_dir: Path,
+        fetch: Callable[..., FetchResult],
+        pause: float,
+        sleep: Callable[[float], None],
+        now: Callable[[], Any],
+        log: Callable[[str], None],
+        manifest: Manifest,
+        stats: RunStats,
+    ):
+        self.raw_dir, self.fetch, self.pause = raw_dir, fetch, pause
+        self.sleep, self.now, self.log = sleep, now, log
+        self.manifest, self.stats = manifest, stats
+        self.lock = threading.Lock()
+
+    def record(self, rec: dict, *, failed: bool = False) -> None:
+        with self.lock:
+            self.manifest.append(rec)
+            if failed:
+                self.stats.failures.append(rec)
+
+    def count_call(self, token_id: str, *, probe: bool = False) -> None:
+        with self.lock:
+            self.stats.calls += 1
+            if probe:
+                self.stats.probe_calls += 1
+            per = self.stats.per_token_calls
+            per[token_id] = per.get(token_id, 0) + 1
+
+    def process(self, spec: TokenSpec, wins: list[tuple[int, int]]) -> None:
+        """Windows of one token run in order in one worker; the pause is per worker. A failed
+        window skips the token's remaining windows; other tokens continue."""
+        for i, (s, e) in enumerate(wins):
+            if i:
+                self.sleep(self.pause)
+            if not self._window(spec, s, e):
+                return
+
+    def _fetch_window(
+        self, spec: TokenSpec, fidelity: int, s: int, e: int, label: str = ""
+    ) -> tuple[dict, pd.DataFrame] | None:
+        """Fetch one window; on failure record it (status=failed) and return None."""
+        try:
+            rec, df, _res = _call_window(
+                spec.token_id, fidelity, s, e, raw_dir=self.raw_dir, fetch=self.fetch, now=self.now
+            )
+        except _FETCH_ERRORS as exc:
+            base = _base_record(spec.token_id, fidelity, s, e, self.now)
+            self.record(failed_record(base, exc), failed=True)
+            self.log(f"FAIL {label}{spec.token_id[:12]}.. fid={fidelity} {iso(s)}: {exc}")
+            return None
+        return rec, df
+
+    def _window(self, spec: TokenSpec, s: int, e: int) -> bool:
+        """Fetch and record one window. False means: abandon this token."""
+        self.count_call(spec.token_id)
+        got = self._fetch_window(spec, spec.fidelity, s, e)
+        if got is None:
+            return False
+        rec, df = got
+        with self.lock:
+            self.stats.rows += len(df)
+        if len(df) == 0 and overlaps_life(spec.life, s, e):
+            return self._handle_empty(spec, rec, s, e)
+        rec["status"] = "ok"
+        self.record(rec)
+        with self.lock:
+            if self.stats.calls % 50 == 0:
+                self.log(f"  {self.stats.calls} calls, {self.stats.rows} rows")
+        return True
+
+    def _handle_empty(self, spec: TokenSpec, rec: dict, s: int, e: int) -> bool:
+        """Empty 200 inside the token's life: record 'empty'; if old enough, confirm it with a
+        fidelity-1 probe (skipped when already fidelity 1)."""
+        rec["status"] = "empty"
+        self.record(rec)
+        if e > int(self.now().timestamp()) - EMPTY_RETRY_WINDOW:
+            with self.lock:
+                self.stats.empty_pending += 1  # recent: the server may still publish it
+            return True
+        probe_rows = 0
+        if spec.fidelity != 1:
+            n = self._probe_fid1(spec, s, e)
+            if n is None:
+                return False
+            probe_rows = n
+        self.record({**rec, "status": "empty_confirmed", "probe_rows": probe_rows})
+        with self.lock:
+            self.stats.empty_confirmed += 1
+        return True
+
+    def _probe_fid1(self, spec: TokenSpec, s: int, e: int) -> int | None:
+        """Re-fetch the window at fidelity 1. Returns the probe's row count, or None on failure."""
+        self.sleep(self.pause)
+        self.count_call(spec.token_id, probe=True)
+        got = self._fetch_window(spec, 1, s, e, label="probe ")
+        if got is None:
+            return None
+        prec, pdf = got
+        prec["status"] = "ok"
+        prec["probe_for_fidelity"] = spec.fidelity
+        self.record(prec)
+        with self.lock:
+            self.stats.rows += len(pdf)
+            self.stats.probe_rows += len(pdf)
+        return len(pdf)
+
+
+def _plan_specs(
+    specs: list[TokenSpec], records: list[dict], stats: RunStats
+) -> list[tuple[TokenSpec, list[tuple[int, int]]]]:
+    plans: list[tuple[TokenSpec, list[tuple[int, int]]]] = []
+    for spec in specs:
+        wins = plan_windows(spec.intervals, spec_coverage(records, spec))
+        stats.planned_calls += len(wins)
+        if wins:
+            stats.planned_by_key[(spec.token_id, spec.fidelity)] = len(wins)
+            plans.append((spec, wins))
+    return plans
 
 
 def run_polymarket(
@@ -229,111 +360,28 @@ def run_polymarket(
     probed once at fidelity 1; if that is empty too the original becomes "empty_confirmed"
     (covered). Probe data, if any, is stored under fid=1."""
     manifest = manifest_for(raw_dir)
-    records = manifest.read()
     stats = RunStats()
-    lock = threading.Lock()  # guards manifest appends and stats when workers > 1
-
-    plans: list[tuple[TokenSpec, list[tuple[int, int]]]] = []
-    for spec in specs:
-        cov = spec_coverage(records, spec)
-        wins = plan_windows(spec.intervals, cov)
-        stats.planned_calls += len(wins)
-        if wins:
-            stats.planned_by_key[(spec.token_id, spec.fidelity)] = len(wins)
-            plans.append((spec, wins))
+    plans = _plan_specs(specs, manifest.read(), stats)
     if dry_run:
         return stats
-
-    def record(rec: dict, *, failed: bool = False) -> None:
-        with lock:
-            manifest.append(rec)
-            if failed:
-                stats.failures.append(rec)
-
-    def count_call(token_id: str, *, probe: bool = False) -> None:
-        with lock:
-            stats.calls += 1
-            if probe:
-                stats.probe_calls += 1
-            stats.per_token_calls[token_id] = stats.per_token_calls.get(token_id, 0) + 1
-
-    def process(spec: TokenSpec, wins: list[tuple[int, int]]) -> None:
-        # Windows of one token run in order in one worker; the pause is per worker.
-        made = 0
-        for s, e in wins:
-            if made:
-                sleep(pause)
-            made += 1
-            count_call(spec.token_id)
-            try:
-                rec, df, _res = _call_window(
-                    spec.token_id, spec.fidelity, s, e, raw_dir=raw_dir, fetch=fetch, now=now
-                )
-            except (IngestError, ValueError, KeyError, requests.RequestException) as exc:
-                record(_fail_rec(spec.token_id, spec.fidelity, s, e, now, exc), failed=True)
-                log(f"FAIL {spec.token_id[:12]}.. fid={spec.fidelity} {iso(s)}: {exc}")
-                return  # skip this token's remaining windows; others continue
-            with lock:
-                stats.rows += len(df)
-            if len(df) == 0 and overlaps_life(spec.life, s, e):
-                rec["status"] = "empty"
-                record(rec)
-                old = e <= int(now().timestamp()) - EMPTY_RETRY_WINDOW
-                if not old:
-                    with lock:
-                        stats.empty_pending += 1  # recent: the server may still publish it
-                    continue
-                if spec.fidelity == 1:
-                    rec2 = {**rec, "status": "empty_confirmed", "probe_rows": 0}
-                else:
-                    sleep(pause)
-                    count_call(spec.token_id, probe=True)
-                    try:
-                        prec, pdf, _ = _call_window(
-                            spec.token_id, 1, s, e, raw_dir=raw_dir, fetch=fetch, now=now
-                        )
-                    except (IngestError, ValueError, KeyError, requests.RequestException) as exc:
-                        record(_fail_rec(spec.token_id, 1, s, e, now, exc), failed=True)
-                        log(f"FAIL probe {spec.token_id[:12]}.. fid=1 {iso(s)}: {exc}")
-                        return
-                    prec["status"] = "ok"
-                    prec["probe_for_fidelity"] = spec.fidelity
-                    record(prec)
-                    with lock:
-                        stats.rows += len(pdf)
-                        stats.probe_rows += len(pdf)
-                    rec2 = {**rec, "status": "empty_confirmed", "probe_rows": len(pdf)}
-                record(rec2)
-                with lock:
-                    stats.empty_confirmed += 1
-                continue
-            rec["status"] = "ok"
-            record(rec)
-            with lock:
-                if stats.calls % 50 == 0:
-                    log(f"  {stats.calls} calls, {stats.rows} rows")
-
+    run = _Run(
+        raw_dir=raw_dir,
+        fetch=fetch,
+        pause=pause,
+        sleep=sleep,
+        now=now,
+        log=log,
+        manifest=manifest,
+        stats=stats,
+    )
     if workers <= 1:
         for spec, wins in plans:
-            process(spec, wins)
+            run.process(spec, wins)
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for fut in [pool.submit(process, spec, wins) for spec, wins in plans]:
+            for fut in [pool.submit(run.process, spec, wins) for spec, wins in plans]:
                 fut.result()  # re-raise unexpected errors
     return stats
-
-
-def _fail_rec(token_id: str, fidelity: int, s: int, e: int, now, exc: Exception) -> dict:
-    return {
-        "source": "polymarket",
-        "token_id": token_id,
-        "fidelity": fidelity,
-        "start_ts": s,
-        "end_ts": e,
-        "fetched_at": now().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "status": "failed",
-        "error": str(exc)[:300],
-    }
 
 
 # ---------------------------------------------------------------- gap backfill (fidelity 10)

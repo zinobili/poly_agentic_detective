@@ -150,6 +150,16 @@ def request_json_with_retry(
     raise IngestError(f"gave up after {max_retries + 1} attempts: {last!r}")
 
 
+def base_record(now: Callable[[], Any], **fields: Any) -> dict:
+    """Head of every manifest record: the given identifying fields plus `fetched_at` (UTC)."""
+    return {**fields, "fetched_at": now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def failed_record(rec: dict, exc: Exception) -> dict:
+    """`rec` marked as a failed fetch (never covered); the error text is truncated."""
+    return {**rec, "status": "failed", "error": str(exc)[:300]}
+
+
 EMPTY_RETRY_WINDOW = 2 * DAY  # empty windows ending this close to asof may still be filled upstream
 
 
