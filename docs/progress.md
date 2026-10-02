@@ -1,9 +1,24 @@
 # Progress
 
 ## Resume here
-- Updated 2026-10-03. Steps 0-3 DONE. Engineering review: crusader r1 SHIP WITH FIXES → majors fixed (60706c4, 1cff00c) → r2 **SHIP**. 178 tests, check.sh PASS. Pushed to GitHub (private) after this commit.
-- Next action: Step 4 (alignment) per docs/handoff/step4.md. Builder = data-engineer (lean brief) → check.sh → validator (opus, first round) → crusader before push.
-- Waiting on user: nothing.
+- **PAUSED 2026-10-03 by the user ("resume this in the future").** Work is saved on branch **`wip/step4-alignment`** (not merged, not pushed). `master` = 4925b0f = GitHub (private), CI green.
+- Steps 0-3 DONE (validated, crusader SHIP, pushed).
+- **Step 4 (alignment): built, validator round 1 = FAIL** (docs/reviews/step4_r1.md). On the wip branch:
+  - `src/poly_actor/align/` (panel builder + CLI `python -m poly_actor.align run|report [--strict-asof]`), tests (267 pass, check.sh PASS), prereg amendments A22–A24, lessons line, CLAUDE.md A22 exception note, pyproject `-m "not live"`.
+  - Panels in data/clean/ (git-ignored, rebuildable with `python -m poly_actor.align run`).
+- User decisions so far: A22 = 53s sampling tolerance (recorded as an exception), A23 = CPI edge mass 0.25 primary + 0.10 robustness, A24 = BTC keep no-extrapolation.
+- Validator r1 majors:
+  - M1: the tolerance is applied to every fidelity and every instant. It must be fid-60 points ≤53s after :00 only (`align/prices.py:115`, `pipeline.py:126`).
+  - M2: on `both_trading` rows, Polymarket is still ~1,790s stale (stock bars end at :30, fid-60 samples at :00). Biases toward "Polymarket lags". (Main earlier relayed a "-5s median" that was over all rows; corrected to the user.)
+  - M3: 4 look-ahead guards survive mutation: the tolerance constant, `--strict-asof` silently tolerant, BTC-USD getting the tolerance, BTC-USD spot stamped at bar START (1h look-ahead in primary test 2's control).
+  - 7 minors (main one: a row ending exactly at a roll time takes the new event without a roll_hour flag).
+- **Waiting on user: M2 decision.** A (recommended) = download fid-10 for the full history of Fed + BTC tokens (~1,800 calls, ~20–30 min with --workers 4), so prices are ≤10 min stale at :30 without look-ahead. B = accept ~30 min staleness, documented, with step 6 treating a lag-1 result as unreliable.
+- **Next action on resume:**
+  1. `git checkout wip/step4-alignment`.
+  2. Get the M2 decision.
+  3. One data-engineer batch: M1 + M2 + M3 + minors, with a lean brief pointing to docs/reviews/step4_r1.md.
+  4. `check.sh`, then validator round 2 (the LAST round under the cap, then ask the user).
+  5. Merge to master → crusader → push.
 
 | Step | Status | Validator | Notes |
 |---|---|---|---|
@@ -12,7 +27,7 @@
 | 2 Pairs | **done** — 37a7a9e, d432858, b7e53cd (all 4 pairs approved after A20/A21) | R3 PASS WITH ISSUES (dates all verified vs official calendars). Open: BTC re-listed rungs (major), two-sided date check, CPI companion-event rule | Recommendation: Fed approve; BTC hold until A15; CPI approve release-day test; recession secondary |
 | 2 Pairs (history) | R1 **FAIL** (11 items) → R2 **FAIL**: 3 FOMC dates 1 day late, CPI release times wrong (Oct 2025 CPI never released, shutdown), false CPI Aug-2026 gap, bucket parser bug, DST bug in BTC roll | fresh data-engineer fixing; adding unit tests + date cross-check vs closedTime; prereg amendments logged | draft: fed_decision, us_recession, bitcoin_monthly_price, us_cpi_inflation (tariffs rejected). Needs user approval after validation |
 | 3 Ingestion | **done** (user accepted 2026-10-03) | R1 PASS WITH ISSUES (no look-ahead in 1.32M rows; spot-checks exact) | majors: fid-60 holes, empty-200 marked covered |
-| 4 Alignment | not started | | |
+| 4 Alignment | built; r1 FAIL; PAUSED on branch wip/step4-alignment | R1 FAIL (3 majors) | waiting on user: M2 A/B |
 | 5 Dashboard | not started | | |
 | 6 Analysis | not started | | |
 | 7 Write-up | not started | | |

@@ -123,7 +123,7 @@ yaml per month and step 3 reports the dropped share.
 ## Pair 3 - `us_cpi_inflation` (release-day event study)
 
 Signal `sum(p*c)/sum(p)`; edge buckets use boundary +/- 0.1 as centre with an `edge_mass` flag, drop hour if edge mass
-exceeds 0.10. The CPI series is analysed as a **release-day event study** (08:30 ET is outside stock hours; the implied
+exceeds 0.10 (amended to 0.25 by A23, 2026-10-03; 0.10 kept as the `edge_mass_strict_ok` flag). The CPI series is analysed as a **release-day event study** (08:30 ET is outside stock hours; the implied
 level barely moves between releases), not hourly lead-lag. January 2025 (`january-inflation-annual`, $0.26M) recovered.
 January 2026 is two overlapping events (`...-lower-brackets-817` and `january-inflation-us-annual`), merged into 11
 buckets with a derived "2.7-2.8" bucket and the redundant "<=2.8" dropped. March 2026 has two companion events; the
