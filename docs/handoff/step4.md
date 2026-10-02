@@ -22,5 +22,10 @@ These come from `docs/milestone1_plan.md` ("Requirements learned in step 1") and
 - **Roll and splice** per `config/pairs.yaml`: roll 1h after each official event time, splice on changes, and set the `roll_hour` flag.
 - **Trading hours only:** the lead-lag panel keeps only hours when both sides trade. Overnight and weekend Polymarket moves go in a separate column, set against the opening gap.
 
-## Minors carried over from step 3 (if any)
-None yet.
+## Minors carried over from step 3 (round 2, docs/reviews/step3_r2.md)
+- A stale `data/raw/.ingest.lock` after a hard crash must be deleted by hand. Document it, or add `--break-lock` later.
+- There is no true concurrent-write race test; only sequential-vs-parallel parity is tested.
+- Fidelity-1 probe records are `status=ok` with `n_rows=0`. When resampling, treat them as "no data", not as a price.
+- The "partial" gap label only means the worst remaining gap is over 3h. The 11 remaining gaps are all in the 2025-10-29 09:00–14:00Z upstream outage. Mask those hours.
+- The `empty_confirmed` policy rests on a single fidelity-1 probe.
+- The `--workers 4` rate (~10–16 req/s) hasn't been tested live. Watch the first real run for 429s; backoff handles them.

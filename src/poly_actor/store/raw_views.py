@@ -54,5 +54,6 @@ def create_raw_views(con: duckdb.DuckDBPyConnection, raw_dir: Path = RAW_DIR) ->
         if m.exists() and m.stat().st_size:
             con.execute(
                 f"CREATE OR REPLACE VIEW {name} AS "
-                f"SELECT * FROM read_json_auto('{m.as_posix()}', format='newline_delimited')"
+                f"SELECT * FROM read_json_auto('{m.as_posix()}', "
+                "format='newline_delimited', ignore_errors=true)"
             )

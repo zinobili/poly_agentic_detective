@@ -14,8 +14,13 @@ Limits handled:
   window contains an NYSE session (always for BTC-USD).
 - Rows whose OHLC are all NaN (e.g. TLT 2026-02-02 09:30) are kept but flagged
   `ohlc_all_nan=True`; raw stays faithful, later steps drop them.
-- Only fully completed ET calendar days are ingested (end = today's ET midnight), so
-  no still-forming bar is ever stored and re-runs on the same day are no-ops.
+- Only completed ET days with a 1-day lag are ingested (end = ET midnight of YESTERDAY, so the
+  last stored day is the day before yesterday): Yahoo revises recent bars, so they are frozen
+  only a day later. No still-forming bar is ever stored; same-day re-runs are no-ops.
+- Bar-count check (`stock_gap_table`): each XNYS session should have 7 hourly bars (3 on early
+  closes: yfinance omits the 12:30 bar), BTC-USD 24 per UTC day. Short days are reported, never
+  fatal. Known upstream holes: all equities 2026-01-30 11:30 ET .. 2026-02-02 13:30 ET; BTC-USD
+  2025-10-28 and 2025-11-29.
 
 Raw layout (add-only): data/raw/stocks/<ticker>/<start_ts>_<end_ts>.parquet and
 data/raw/stocks/_manifest.jsonl.
@@ -79,7 +84,12 @@ def parse_bars(df: pd.DataFrame, start_ts: int, end_ts: int) -> pd.DataFrame:
     return out
 
 
-def fetch_bars(ticker: str, start_ts: int, end_ts: int) -> pd.DataFrame:
+def fetch_bars(
+    ticker: str,
+    start_ts: int,
+    end_ts: int,
+    sleep: Callable[[float], None] = time.sleep,
+) -> pd.DataFrame:
     """Thin network call: the raw yfinance frame for [start, end). Retries on exceptions
     or empty frames with short backoff; the caller checks row counts."""
     import yfinance as yf
@@ -97,7 +107,8 @@ def fetch_bars(ticker: str, start_ts: int, end_ts: int) -> pd.DataFrame:
                 return df
         except Exception as exc:  # yfinance raises assorted types
             last = exc
-        time.sleep(2.0 * 2**attempt)
+        if attempt < 2:  # no pointless sleep after the last attempt
+            sleep(2.0 * 2**attempt)
     if last:
         raise IngestError(f"yfinance error for {ticker}: {last!r}")
     return df
@@ -108,10 +119,14 @@ def et_midnight_epoch(d) -> int:
     return to_epoch(datetime(d.year, d.month, d.day, tzinfo=ET))
 
 
+LAG_DAYS = 1  # freeze a bar only once its ET day is a full day old (Yahoo revisions)
+
+
 def target_interval(window_start_ts: int, asof: datetime) -> Interval:
-    """[max(window start, asof - 729d) floored to ET midnight, today's ET midnight)."""
+    """[max(window start, asof - 729d) floored to ET midnight, ET midnight of yesterday).
+    Yesterday's midnight = end of the previous completed ET day minus the 1-day lag."""
     today = asof.astimezone(ET).date()
-    end = et_midnight_epoch(today)
+    end = et_midnight_epoch(today - timedelta(days=LAG_DAYS))
     cap = et_midnight_epoch(today - timedelta(days=MAX_LOOKBACK_DAYS))
     start_day = datetime.fromtimestamp(max(window_start_ts, cap), ET).date()
     return (et_midnight_epoch(start_day), end)
@@ -127,6 +142,52 @@ def expects_rows(ticker: str, start_ts: int, end_ts: int) -> bool:
     s = datetime.fromtimestamp(start_ts, ET).date()
     e = datetime.fromtimestamp(end_ts - 1, ET).date()
     return len(cal.sessions_in_range(pd.Timestamp(s), pd.Timestamp(e))) > 0
+
+
+def expected_bars(early: bool) -> int:
+    return 3 if early else 7
+
+
+def stock_gap_table(bars: pd.DataFrame, end_ts: int | None = None) -> pd.DataFrame:
+    """Days with fewer bars than expected. `bars` has columns ticker, ts (tz-aware).
+
+    Equities: every XNYS session from the ticker's first bar's ET date through the date of
+    `end_ts - 1` (default: last bar) expects 7 bars, 3 on early closes. BTC-USD: every UTC day
+    strictly between its first and last (partial) days expects 24.
+    Returns columns ticker, date, kind, expected, actual, missing (missing > 0 only)."""
+    import exchange_calendars as xcals
+
+    cols = ["ticker", "date", "kind", "expected", "actual", "missing"]
+    if bars.empty:
+        return pd.DataFrame(columns=cols)
+    cal = xcals.get_calendar("XNYS")
+    early = {d.date() for d in cal.early_closes}
+    rows: list[list] = []
+    for tk, g in bars.groupby("ticker"):
+        ts = pd.DatetimeIndex(g["ts"]).tz_convert("UTC")
+        if tk.endswith("-USD"):
+            days = pd.Series(ts.date).value_counts()
+            lo, hi = ts.min().date(), ts.max().date()
+            for d in pd.date_range(lo, hi, freq="D").date:
+                if d in (lo, hi):
+                    continue
+                n = int(days.get(d, 0))
+                if n < 24:
+                    rows.append([tk, d, "utc_day", 24, n, 24 - n])
+            continue
+        et = ts.tz_convert(ET)
+        days = pd.Series(et.date).value_counts()
+        lo = et.min().date()
+        hi = (
+            datetime.fromtimestamp(end_ts - 1, ET).date() if end_ts is not None else et.max().date()
+        )
+        for sess in cal.sessions_in_range(pd.Timestamp(lo), pd.Timestamp(hi)):
+            d = sess.date()
+            exp = expected_bars(d in early)
+            n = int(days.get(d, 0))
+            if n < exp:
+                rows.append([tk, d, "xnys_session", exp, n, exp - n])
+    return pd.DataFrame(rows, columns=cols)
 
 
 @dataclass

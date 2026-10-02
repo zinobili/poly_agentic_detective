@@ -22,6 +22,7 @@ BUFFER = DAY
 EVENT_HALF_WINDOW = DAY
 FID_LIFE = 60
 FID_EVENT = 1
+PUBLISH_LAG = 600  # the server publishes some points late: stop at floor(asof - 10min, hour)
 
 
 def _ep(v: Any) -> int | None:
@@ -36,7 +37,7 @@ def _ep(v: Any) -> int | None:
 
 def _clip(s: int, e: int, lo: int, asof: int) -> Interval | None:
     s, e = floor_to(max(s, lo), HOUR), ceil_to(min(e, asof), HOUR)
-    e = min(e, floor_to(asof, HOUR))
+    e = min(e, floor_to(asof - PUBLISH_LAG, HOUR))
     return (s, e) if s < e else None
 
 
@@ -44,8 +45,14 @@ class _Plan:
     def __init__(self, lo: int, asof: int):
         self.lo, self.asof = lo, asof
         self.specs: dict[tuple[str, int], TokenSpec] = {}
+        self.life: dict[str, Interval] = {}
 
-    def add(self, pair: str, token: str, fid: int, s: int, e: int) -> None:
+    def add(
+        self, pair: str, token: str, fid: int, s: int, e: int, life: Interval | None = None
+    ) -> None:
+        if life is not None:  # token's market life [created, closed), before the 24h buffer
+            lo, hi = self.life.get(token, life)
+            self.life[token] = (min(lo, life[0]), max(hi, life[1]))
         iv = _clip(s, e, self.lo, self.asof)
         if iv is None:
             return
@@ -111,6 +118,8 @@ def build_token_specs(cfg: dict, asof_ts: int, pairs: list[str] | None = None) -
             _plan_recession(plan, pid, p)
         else:
             raise ValueError(f"no ingestion plan for pair {pid!r}")
+    for sp in plan.specs.values():
+        sp.life = plan.life.get(sp.token_id)
     return sorted(plan.specs.values(), key=lambda s: (s.fidelity, s.token_id))
 
 
@@ -121,7 +130,7 @@ def _plan_fed(plan: _Plan, pid: str, p: dict) -> None:
         start, decision = _ep(m["gamma_start"]), _ep(m["decision_time_utc"])
         end = _ep(m["use_until_utc"]) + BUFFER
         for tok in toks:
-            plan.add(pid, tok, FID_LIFE, start, end)
+            plan.add(pid, tok, FID_LIFE, start, end, (start, end - BUFFER))
         plan.event(pid, toks, decision)
         if i + 1 < len(ms):  # signal rolls into the next meeting's market
             plan.event(pid, _fed_tokens(ms[i + 1]), decision)
@@ -135,7 +144,7 @@ def _plan_cpi(plan: _Plan, pid: str, p: dict) -> None:
         start = min(starts) if starts else _ep(m["first_usable_utc"])
         release = _ep(m["release_time_utc"])
         for tok in toks:
-            plan.add(pid, tok, FID_LIFE, start, release + BUFFER)
+            plan.add(pid, tok, FID_LIFE, start, release + BUFFER, (start, release))
         plan.event(pid, toks, release)
         if i + 1 < len(ms):
             plan.event(pid, _cpi_tokens(ms[i + 1]), release)
@@ -152,10 +161,19 @@ def _plan_btc(plan: _Plan, pid: str, p: dict) -> None:
                     continue
                 seen.add(tok)
                 end = _ep(r.get("closed_time")) or month_end
-                plan.add(pid, tok, FID_LIFE, _ep(r["created_utc"]), end + BUFFER)
+                plan.add(
+                    pid,
+                    tok,
+                    FID_LIFE,
+                    _ep(r["created_utc"]),
+                    end + BUFFER,
+                    (_ep(r["created_utc"]), end),
+                )
 
 
 def _plan_recession(plan: _Plan, pid: str, p: dict) -> None:
     for m in p["markets"]:
         end = _ep(m.get("closed_time")) or _ep(m["end"])
-        plan.add(pid, m["token_id_yes"], FID_LIFE, _ep(m["start"]), end + BUFFER)
+        plan.add(
+            pid, m["token_id_yes"], FID_LIFE, _ep(m["start"]), end + BUFFER, (_ep(m["start"]), end)
+        )

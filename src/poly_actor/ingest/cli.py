@@ -1,4 +1,4 @@
-"""CLI: python -m poly_actor.ingest run [--pairs a,b] [--dry-run] | report"""
+"""CLI: python -m poly_actor.ingest run [--pairs a,b] [--dry-run] [--min-gap-hours H] | report"""
 
 from __future__ import annotations
 
@@ -10,9 +10,11 @@ from datetime import datetime
 
 import yaml
 
-from poly_actor.config import CONFIG_DIR, RAW_DIR
+from poly_actor.config import CONFIG_DIR, DATA_DIR, RAW_DIR
 from poly_actor.ingest import polymarket, stocks, targets
-from poly_actor.ingest.common import utcnow
+from poly_actor.ingest.common import IngestError, ingest_lock, utcnow
+
+SCRATCH = DATA_DIR / "scratch" / "step3"
 
 
 def _load_cfg(path=None) -> dict:
@@ -25,6 +27,22 @@ def _log(msg: str) -> None:
 
 
 def cmd_run(args) -> int:
+    if args.dry_run:
+        return _run(args)
+    try:
+        with ingest_lock(RAW_DIR):
+            return _run(args)
+    except IngestError as exc:
+        _log(str(exc))
+        return 3
+
+
+def _write_scratch(df, name: str) -> None:
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    df.to_csv(SCRATCH / name, index=False)
+
+
+def _run(args) -> int:
     cfg = _load_cfg()
     pairs = args.pairs.split(",") if args.pairs else None
     unknown = set(pairs or []) - set(targets.pair_ids(cfg))
@@ -45,12 +63,19 @@ def cmd_run(args) -> int:
 
     do_pm = args.only in (None, "polymarket")
     do_st = args.only in (None, "stocks")
-    pm = polymarket.run_polymarket(specs, **kw) if do_pm else None
+    pm = polymarket.run_polymarket(specs, **kw, workers=args.workers) if do_pm else None
+    min_gap = int(args.min_gap_hours * 3600)
+    backfill = do_pm and not args.no_backfill
     st = (
         stocks.run_stocks(tickers, wstart, asof=asof, **{**kw, "pause": max(args.pause, 0.5)})
         if do_st
         else None
     )
+    bf = None
+    bf_specs: list[polymarket.TokenSpec] = []
+    if backfill:  # after the life pass, so its fresh data is visible to the gap finder
+        bf_specs = polymarket.backfill_specs(RAW_DIR, specs, min_gap)
+        bf = polymarket.run_polymarket(bf_specs, **kw, workers=args.workers)
 
     if args.dry_run:
         _log(f"DRY RUN (no network). asof={asof.isoformat()}")
@@ -67,21 +92,54 @@ def cmd_run(args) -> int:
                 _log(f"  pair {p}: {n}")
             for f, n in sorted(by_fid.items()):
                 _log(f"  fidelity {f}: {n}")
+        if bf:
+            ngaps = sum(len(sp.intervals) for sp in bf_specs)
+            _log(
+                f"backfill (fid {polymarket.BACKFILL_FID}, gaps > {args.min_gap_hours:g}h, from "
+                f"data on disk): {len(bf_specs)} tokens, {ngaps} gaps, {bf.planned_calls} calls"
+            )
         if st:
             _log(f"stocks: {len(tickers)} tickers {tickers}, {st.planned_calls} calls")
-        total = (pm.planned_calls if pm else 0) + (st.planned_calls if st else 0)
-        _log(f"TOTAL planned calls: {total}  (~{total * (args.pause + 0.6) / 60:.0f} min)")
+        total = sum(x.planned_calls for x in (pm, bf, st) if x)
+        mins = total * (args.pause + 0.6) / 60 / max(args.workers, 1)
+        _log(f"TOTAL planned calls: {total}  (~{mins:.0f} min with {args.workers} workers)")
         return 0
 
-    fails = (pm.failures if pm else []) + (st.failures if st else [])
+    parts = [x for x in (pm, bf) if x]
+    fails = [f for x in (*parts, st) if x for f in x.failures]
     _log(
         f"done in {time.time() - t0:.0f}s. polymarket calls={pm.calls if pm else 0} "
-        f"rows={pm.rows if pm else 0}; stocks calls={st.calls if st else 0} "
-        f"rows={st.rows if st else 0}; failures={len(fails)}"
+        f"rows={pm.rows if pm else 0}; backfill calls={bf.calls if bf else 0} "
+        f"rows={bf.rows if bf else 0}; stocks calls={st.calls if st else 0} "
+        f"rows={st.rows if st else 0}; empty_pending="
+        f"{sum(x.empty_pending for x in parts)} empty_confirmed="
+        f"{sum(x.empty_confirmed for x in parts)}; failures={len(fails)}"
     )
     for f in fails:
         _log(f"  failed: {f.get('token_id') or f.get('ticker')} {f['error']}")
+    _write_gap_files(specs, min_gap, tickers, wstart, asof)
     return 1 if fails else 0
+
+
+def _write_gap_files(specs, min_gap: int, tickers, wstart: int, asof: datetime) -> None:
+    """gap_inventory.csv (Polymarket) and stock_gaps.csv; both are summaries, never fatal."""
+    inv = polymarket.gap_inventory(RAW_DIR, {sp.token_id for sp in specs}, min_gap)
+    _write_scratch(inv, "gap_inventory.csv")
+    _write_scratch(_stock_gaps(wstart, asof), "stock_gaps.csv")
+
+
+def _stock_gaps(wstart: int, asof: datetime):
+    import duckdb
+
+    from poly_actor.store.raw_views import create_raw_views
+
+    con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
+    create_raw_views(con, RAW_DIR)
+    bars = con.execute("SELECT ticker, ts FROM raw_stock_bars").df()
+    con.close()
+    _, end = stocks.target_interval(wstart, asof)
+    return stocks.stock_gap_table(bars, end)
 
 
 def cmd_report(args) -> int:
@@ -120,6 +178,7 @@ def cmd_report(args) -> int:
                 ntok[p].add(sp.token_id)
     for p, s in sorted(ntok.items()):
         _log(f"planned tokens {p}: {len(s)}")
+    _report_gaps(specs)
     _log("ticker, rows, nan_rows, first_ts, last_ts")
     sdf = con.execute(
         "SELECT ticker, count(*), count(*) FILTER (WHERE ohlc_all_nan), min(ts), max(ts) "
@@ -127,7 +186,40 @@ def cmd_report(args) -> int:
     ).fetchall()
     for r in sdf:
         _log(", ".join(str(x) for x in r))
+    _report_stock_gaps()
     return 0
+
+
+def _report_gaps(specs) -> None:
+    inv = polymarket.gap_inventory(RAW_DIR, {sp.token_id for sp in specs})
+    _write_scratch(inv, "gap_inventory.csv")
+    _log(f"gap inventory (interior gaps > 3h in fid 60+1; fid-10 backfill): {len(inv)} gaps")
+    if len(inv):
+        _log(f"  by status: {inv['status'].value_counts().to_dict()}")
+        _log(
+            f"  tokens={inv['token_id'].nunique()} gap_hours={inv['gap_hours'].sum():.0f} "
+            f"filled_points={int(inv['filled_points'].sum())}"
+        )
+        bad = inv[inv["status"] != "filled"]
+        _log(
+            f"  remaining unfilled/partial: {len(bad)} gaps, "
+            f"{bad['largest_remaining_gap_hours'].sum():.0f}h (largest-remaining sum)"
+        )
+    recs = polymarket.manifest_for(RAW_DIR).read()
+    counts: dict[str, int] = defaultdict(int)
+    for r in recs:
+        counts[r.get("status", "?")] += 1
+    _log(f"  manifest statuses: {dict(counts)}")
+
+
+def _report_stock_gaps() -> None:
+    cfg = _load_cfg()
+    gaps = _stock_gaps(targets.window_start(cfg), utcnow())
+    _write_scratch(gaps, "stock_gaps.csv")
+    _log(f"stock short days: {len(gaps)} (see data/scratch/step3/stock_gaps.csv)")
+    if len(gaps):
+        for tk, g in gaps.groupby("ticker"):
+            _log(f"  {tk}: {len(g)} short days, {int(g['missing'].sum())} bars missing")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,7 +230,17 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", help="plan only; no network, no writes")
     r.add_argument("--only", choices=["polymarket", "stocks"])
     r.add_argument("--asof", help="pin 'now' (tz-aware ISO) for reproducible planning")
-    r.add_argument("--pause", type=float, default=0.25, help="seconds between calls")
+    r.add_argument("--no-backfill", action="store_true", help="skip the fidelity-10 gap pass")
+    r.add_argument(
+        "--min-gap-hours", type=float, default=3.0, help="backfill gaps longer than this"
+    )
+    r.add_argument("--pause", type=float, default=0.25, help="seconds between calls (per worker)")
+    r.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="concurrent Polymarket workers, one token per worker (1 = sequential)",
+    )
     r.set_defaults(fn=cmd_run)
     rp = sub.add_parser("report", help="row counts and coverage from the raw files")
     rp.set_defaults(fn=cmd_report)

@@ -215,7 +215,7 @@ def test_polymarket_run_is_idempotent_and_manifested(tmp_path):
     # incremental: extend the target by one day -> exactly one new call for the new day only
     spec2 = pm.TokenSpec("tok1", 60, [(START, END + DAY)])
     s3 = pm.run_polymarket([spec2], fetch=_fake_fetch_factory(body, log), **kw)
-    assert s3.calls == 1 and log[-1][1] == END - pm.BOUNDARY_PAD
+    assert s3.calls == 1 and log[-1][1] == END - 60  # literal: pad is 60s, not tautological
     assert log[-1][2] == END + DAY  # starts at the covered end (minus the boundary pad)
 
 
@@ -305,7 +305,7 @@ def test_stocks_run_idempotent_with_nan_counted(tmp_path):
         calls.append((tk, s, e))
         return raw
 
-    asof = datetime(2026, 2, 4, 12, tzinfo=UTC)  # ET midnight 2026-02-04 = S_END
+    asof = datetime(2026, 2, 5, 12, tzinfo=UTC)  # 1-day lag: end = ET midnight 2026-02-04 = S_END
     ws = S_START
     kw = dict(raw_dir=tmp_path, fetch=fetch, sleep=lambda x: 0, asof=asof)
     s1 = st.run_stocks(["TLT"], ws, **kw)
@@ -367,7 +367,7 @@ def test_duckdb_views_dedup_and_empty(tmp_path):
         raw_dir=tmp_path,
         fetch=lambda *a: st_raw,
         sleep=lambda x: 0,
-        asof=datetime(2026, 2, 4, 12, tzinfo=UTC),
+        asof=datetime(2026, 2, 5, 12, tzinfo=UTC),
     )
     create_raw_views(con, tmp_path)
     n, tok, fid = con.execute(
@@ -434,3 +434,38 @@ def test_load_btc_rungs_maps_direction_and_select_ladder_runs(cfg):
     assert all(p.p == 0.3 for p in pts if p.source != "touched")
     dips = select_ladder(rungs, "dip", t, quotes)
     assert dips and all(isinstance(p.strike, float) for p in dips)
+
+
+# ---------------------------------------------------------------- polymarket run: concurrency
+
+
+def test_parallel_workers_match_sequential_run(tmp_path):
+    body = _body("clob_active_with_live_point.json")
+    specs = [pm.TokenSpec(f"tok{i}", 60, [(START - 20 * DAY, END + 20 * DAY)]) for i in range(6)]
+    now = lambda: datetime(2026, 10, 1, tzinfo=UTC)  # noqa: E731
+    kw = dict(pause=0, sleep=lambda s: 0, now=now)
+
+    def run(root, workers):
+        log: list = []
+        st = pm.run_polymarket(
+            specs, raw_dir=root, fetch=_fake_fetch_factory(body, log), workers=workers, **kw
+        )
+        files = {
+            p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*.parquet"))
+        }
+        man = Manifest(root / "polymarket" / "_manifest.jsonl").read()
+        keys = sorted(
+            (r["token_id"], r["start_ts"], r["end_ts"], r["status"], r["n_rows"]) for r in man
+        )
+        return st, sorted(log), files, keys
+
+    s1, log1, files1, man1 = run(tmp_path / "seq", 1)
+    s4, log4, files4, man4 = run(tmp_path / "par", 4)
+    assert s1.calls == s4.calls > len(specs)  # several windows per token
+    assert s1.rows == s4.rows and not s1.failures and not s4.failures
+    assert log1 == log4 and files1 == files4 and man1 == man4
+    # a re-run with workers is still a no-op
+    s5 = pm.run_polymarket(
+        specs, raw_dir=tmp_path / "par", fetch=_fake_fetch_factory(body, []), workers=4, **kw
+    )
+    assert s5.calls == 0
