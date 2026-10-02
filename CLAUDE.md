@@ -23,6 +23,7 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 3. **`bash scripts/check.sh`** runs the tests, ruff, the pairs.yaml rebuild and the ingest dry run.
 4. **Validate** with `/validate-step <N>`, using a fresh validator. Severity gate: only blockers and majors trigger a re-check, and minors move to the next step's hand-off. **At most 2 rounds**, then ask the user.
 5. **Commit** locally, then update `docs/progress.md`.
+   **Before any push to GitHub:** run the `clean-code-crusader` agent on the unpushed diff (software-engineering standards). Fix its blockers and majors, run `scripts/check.sh`, then push.
 6. **Report to the user once per step boundary**, not after every agent report.
 
 Do not mark a step done without a validator report.
@@ -44,4 +45,4 @@ In the desktop app, `mcp__ccd_session_mgmt__get_usage` reports the 5-hour % (not
 `src/poly_actor/{ingest,store,align,analysis,dashboard}`, `config/`, `data/{raw,clean}` (ignored), `notebooks/`, `tests/`, `docs/`.
 
 ## Agents (`.claude/agents/`)
-`data-engineer`, `quant-researcher`, `validator` (read-only + runs tests), `tutor` (explains after build).
+`data-engineer`, `quant-researcher`, `validator` (research correctness: read-only + runs tests), `clean-code-crusader` (engineering standards review before each push), `tutor` (explains after build).

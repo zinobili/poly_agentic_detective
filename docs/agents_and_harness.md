@@ -6,6 +6,7 @@
 | data-engineer | `.claude/agents/data-engineer.md` | ingest, store, align | full + web |
 | quant-researcher | `.claude/agents/quant-researcher.md` | analysis methods + interpretation | full |
 | validator | `.claude/agents/validator.md` | independent check after each step | read + bash, no edits |
+| clean-code-crusader | `.claude/agents/clean-code-crusader.md` | engineering-standards review before every push (design, types, errors, tests, security, performance) | read + bash, writes only docs/reviews/ |
 | tutor | `.claude/agents/tutor.md` | lessons after each step | write `notebooks/` only |
 
 Bring in as needed: Planner (built-in `Plan`), Source Scout, Market Mapper, Compliance/Risk, Scribe, Code Reviewer (`/code-review`).
