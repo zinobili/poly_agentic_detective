@@ -29,3 +29,16 @@ These come from `docs/milestone1_plan.md` ("Requirements learned in step 1") and
 - The "partial" gap label only means the worst remaining gap is over 3h. The 11 remaining gaps are all in the 2025-10-29 09:00–14:00Z upstream outage. Mask those hours.
 - The `empty_confirmed` policy rests on a single fidelity-1 probe.
 - The `--workers 4` rate (~10–16 req/s) hasn't been tested live. Watch the first real run for 429s; backoff handles them.
+
+## Minors carried over from the engineering review (docs/reviews/push_2026-10-03_crusader_r1.md and r2)
+There are 18 round-1 minors, deliberately not fixed. The main ones:
+- three duplicated time parsers; consolidate on the `poly_actor.ingest.common` helpers
+- magic numbers in the ingest CLI
+- missing docstrings and type hints in places
+- `ladder` typed `str` instead of `Literal["up", "dip"]`
+- the pytest `live` marker says "deselected by default", but nothing deselects it (add `-m "not live"` to addopts or fix the text)
+- a malformed `--asof` gives a traceback instead of a clean error
+- `run_stocks` is 63 lines
+- some tests check several concepts at once
+
+Fix any of these that the step 4 code touches. New step 4 code must meet the crusader standard from the start (`.claude/agents/clean-code-crusader.md`).

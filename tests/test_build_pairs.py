@@ -599,3 +599,28 @@ def test_two_whole_month_rungs_at_one_strike_resolve_to_earliest_created_then_sl
     assert [(x.slug, x.p) for x in pts] == [("c", 0.3)]
     rungs = rungs[:2]
     assert [x.slug for x in select_ladder(rungs, "up", _dt(10), quotes)] == ["a"]
+
+
+def test_gamma_non_429_client_error_raises_without_retry(tmp_path):
+    """A 404 is not retried: it raises HttpStatusError on the first call and nothing is cached."""
+    import pytest
+
+    from poly_actor.ingest.common import HttpStatusError
+
+    calls = []
+
+    class Resp:
+        status_code, content, headers, text = 404, b"", {}, "not found"
+
+        def json(self):
+            return None
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(params)
+        return Resp()
+
+    gamma = GammaClient(tmp_path, fetch_slugs={"missing"}, get=fake_get, sleep=lambda s: None)
+    with pytest.raises(HttpStatusError):
+        gamma.get_event("missing")
+    assert len(calls) == 1  # no retry on a non-429 4xx
+    assert not list(tmp_path.rglob("*missing*"))  # nothing cached

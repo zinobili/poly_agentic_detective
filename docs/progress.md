@@ -1,14 +1,8 @@
 # Progress
 
 ## Resume here
-- Updated 2026-10-02. HEAD = step 3 fix-round commit (see git log). GitHub (private) is behind: last pushed 398986a. Push only when the user asks.
-- Steps 0-2 DONE. Step 3 DONE pending the user's call: round 2 PASS WITH ISSUES (docs/reviews/step3_r2.md); its one major (a torn manifest line was lost or broke later reads after more appends) was fixed by main with a regression test (fails before, passes after) and committed. Round cap reached, so the user decides: accept, or one more scoped re-check.
-- Minors carried to docs/handoff/step4.md.
-- Next action: on the user's OK → Step 4 (alignment) per docs/handoff/step4.md: builder = data-engineer; first validation on opus.
-- 2026-10-03 user: accept step 3 (option 1). Push to GitHub only after tests plus a professional-standards review → new agent clean-code-crusader. Now: crusader full audit → fix blockers/majors → check.sh → push → Step 4.
-- Crusader full audit r1: SHIP WITH FIXES, 0 blockers, 5 majors (docs/reviews/push_2026-10-03_crusader_r1.md). data-engineer fixing majors 1-4 (CLI tests, manifest view corruption check, run_polymarket split, build_pairs.py → src/poly_actor/pairs_build/ with byte-identical yaml). Major 5 (guard hook literal-only): documented as best-effort in CLAUDE.md; extending settings.json deny rules needs the user's OK.
-- Next: builder report → crusader r2 (scoped) → check.sh → push → Step 4.
-- Major 5 done (user OK 2026-10-03): 19 deny rules in .claude/settings.json + best-effort note in CLAUDE.md, commit 1cff00c.
+- Updated 2026-10-03. Steps 0-3 DONE. Engineering review: crusader r1 SHIP WITH FIXES → majors fixed (60706c4, 1cff00c) → r2 **SHIP**. 178 tests, check.sh PASS. Pushed to GitHub (private) after this commit.
+- Next action: Step 4 (alignment) per docs/handoff/step4.md. Builder = data-engineer (lean brief) → check.sh → validator (opus, first round) → crusader before push.
 - Waiting on user: nothing.
 
 | Step | Status | Validator | Notes |
