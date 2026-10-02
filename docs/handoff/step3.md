@@ -2,7 +2,9 @@
 
 **Status:** committed 03ad9eb, validator round 1 PASS WITH ISSUES. A fix round is built but **not validated or committed**.
 
-**Next:** validator round 2, scoped to the fix-round diff and the round-1 majors below. Re-check model: sonnet.
+**Round 2 result:** PASS WITH ISSUES (docs/reviews/step3_r2.md). Both round-1 majors are fixed. One new major, a torn manifest line that later appends corrupt, was fixed by the main agent: append seals the torn line with a marker, read skips sealed or final torn lines, and the DuckDB view sets ignore_errors. Regression test `test_torn_final_line_survives_later_appends` failed before the fix and passes after; 164 tests pass. The 2-round cap was reached, so the user decides: accept, or one more scoped round.
+
+**Next (was):** validator round 2, scoped to the fix-round diff and the round-1 majors below. Re-check model: sonnet.
 
 ## Round-1 majors (must be fixed)
 1. **Fidelity-60 holes.** About 1,962 interior gaps longer than 3h, mostly in 2026-03/04.
