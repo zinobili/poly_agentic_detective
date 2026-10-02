@@ -19,9 +19,9 @@ Approach: thin end-to-end slice first (1 market, 1 ticker, 1 chart), then widen.
 | 2 | Pick pairs | `config/pairs.yaml` with rationale | per-meeting Fed markets need stitching ("rolling") |
 | 3 | Ingestion | `ingest/{polymarket,stocks,trends,news}.py` → `data/raw/*.parquet` | rate limits, pytrends successor stability |
 | 4 | Alignment | UTC hourly panel, market-hours mask, log-odds Δ and log returns | look-ahead, tz/DST bugs |
-| 5 | Dashboard | Streamlit + Plotly overlay per pair | — |
+| 5 | Dashboard | Streamlit + Plotly, lay-reader layout per `docs/design/dashboard_ux.md` (mockup: `docs/design/dashboard_mockup.html`) | data bragging: charts without a takeaway |
 | 6 | Analysis | cross-corr, Granger, event study, placebo + multiple testing | fooling ourselves |
-| 7 | Write-up | per-pair verdict: lead / lag / none + confidence | overclaiming |
+| 7 | Write-up | per-pair verdict: lead / lag / none + confidence; verdict, confidence and checklist rules computed, not hand-written (open items in `docs/design/dashboard_ux.md`) | overclaiming |
 
 ## Requirements learned in step 1 (validator-confirmed)
 Step 3 (ingestion):

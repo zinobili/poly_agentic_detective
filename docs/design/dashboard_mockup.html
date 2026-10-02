@@ -1,0 +1,627 @@
+<title>Signal Lab Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* v2: answer first. Hero verdict -> scorecard of 4 pairs -> rules of evidence -> one pair's evidence, each chart with an action title, how-to-read and so-what. */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --fg: #14171f; --muted: #5b6372; --faint: #8b93a3;
+  --line: #e1e4ea; --shade: #eef0f4;
+  --poly: #2a78d6; --stock: #eb6834; --noise: #b9bec8;
+  --accent-bg: #e6f0fc; --accent-fg: #1c5cab;
+  --warn-bg: #fff3d6; --warn-fg: #7a5200;
+  --pass: #1f7a4a; --fail: #b23b3b; --weak: #946200; --pend: #6b7280;
+  --font-ui: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111318; --panel: #191c23; --fg: #e8eaef; --muted: #a0a8b6; --faint: #6f7787;
+  --line: #2a2f3a; --shade: #222630;
+  --poly: #3987e5; --stock: #d95926; --noise: #4a505c;
+  --accent-bg: #16263b; --accent-fg: #86b6ef;
+  --warn-bg: #3a2d0e; --warn-fg: #f0c86a;
+  --pass: #6fcf97; --fail: #f08a8a; --weak: #f0c86a; --pend: #a0a8b6; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111318; --panel: #191c23; --fg: #e8eaef; --muted: #a0a8b6; --faint: #6f7787;
+  --line: #2a2f3a; --shade: #222630;
+  --poly: #3987e5; --stock: #d95926; --noise: #4a505c;
+  --accent-bg: #16263b; --accent-fg: #86b6ef;
+  --warn-bg: #3a2d0e; --warn-fg: #f0c86a;
+  --pass: #6fcf97; --fail: #f08a8a; --weak: #f0c86a; --pend: #a0a8b6; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { overflow-anchor: none; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 28px; }
+.banner { background: var(--warn-bg); color: var(--warn-fg); padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; margin: 0 0 6px; }
+h1 { font-size: clamp(24px, 4.2vw, 34px); line-height: 1.2; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.015em; max-width: 30ch; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 4px; font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 17px; margin: 0; font-weight: 600; line-height: 1.35; text-wrap: balance; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 68ch; }
+.lede b { color: var(--fg); font-weight: 600; }
+.section-head { display: grid; gap: 4px; margin-bottom: 12px; }
+.section-head p { color: var(--muted); max-width: 70ch; }
+
+/* scorecard */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.card { text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; cursor: pointer; display: grid; gap: 10px; align-content: start; }
+.card:hover { border-color: var(--faint); }
+.card[aria-pressed="true"] { border-color: var(--poly); box-shadow: 0 0 0 1px var(--poly); }
+.card:focus-visible, .chip:focus-visible, summary:focus-visible { outline: 2px solid var(--poly); outline-offset: 2px; }
+.card .name { font-weight: 700; font-size: 16px; }
+.card .q { color: var(--muted); font-size: 13.5px; }
+.card .finding { font-size: 14.5px; }
+.card .more { font-size: 13px; color: var(--accent-fg); font-weight: 600; }
+
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--shade); color: var(--fg); justify-self: start; border: 1px solid transparent; }
+.badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.badge.lead { background: var(--accent-bg); color: var(--accent-fg); }
+.badge.lead::before { background: var(--poly); }
+.badge.early { background: transparent; border: 1px dashed var(--faint); color: var(--muted); }
+.badge.early::before { background: transparent; border: 1px solid var(--faint); }
+
+.conf { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.conf .bars { display: inline-flex; gap: 3px; }
+.conf .bars i { width: 14px; height: 6px; border-radius: 2px; background: var(--line); }
+.conf .bars i.on { background: var(--fg); }
+.conf b { color: var(--fg); font-weight: 600; }
+
+/* rules of evidence */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.rule { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.rule h3 { font-size: 15px; margin-bottom: 8px; }
+.rule ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.rule.null { background: var(--accent-bg); border-color: transparent; }
+.rule.null p { font-size: 14px; }
+
+/* detail */
+.detail { display: grid; gap: 16px; scroll-margin-top: 72px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.verdict-head { display: grid; gap: 10px; }
+.verdict-head .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.sowhat { border-left: 3px solid var(--poly); padding: 2px 0 2px 12px; }
+.sowhat .k, .howto .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; color: var(--muted); margin-right: 6px; }
+.checks { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.checks li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 14px; }
+.st { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.st.pass { color: var(--pass); } .st.fail { color: var(--fail); } .st.weak { color: var(--weak); } .st.na, .st.pend { color: var(--pend); }
+.checks small, .tech { display: block; color: var(--faint); font-size: 12px; font-family: var(--font-data); }
+.conf-why { font-size: 14px; color: var(--muted); }
+
+.tickrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tickrow .lbl { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.chip { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.chip span { font-family: var(--font-data); font-weight: 500; margin-right: 6px; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.charts .wide { grid-column: 1 / -1; }
+@media (max-width: 860px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.chartcard { display: grid; gap: 10px; align-content: start; }
+.chartcard .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; color: var(--muted); }
+.howto { font-size: 13.5px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.legend i.box { height: 10px; background: var(--shade); border: 1px solid var(--line); }
+.chartbox { width: 100%; min-width: 0; }
+svg.chart { display: block; width: 100%; touch-action: pan-y; }
+svg.chart text { font-family: var(--font-ui); font-size: 11.5px; fill: var(--muted); }
+svg.chart text.num { font-family: var(--font-data); font-size: 10.5px; }
+svg.chart text.ann { fill: var(--fg); font-weight: 600; }
+details { font-size: 13.5px; }
+summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+details .body { margin-top: 8px; color: var(--muted); display: grid; gap: 4px; }
+details .body code { font-family: var(--font-data); font-size: 12px; color: var(--fg); }
+.gloss { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 6px 16px; margin-top: 10px; font-size: 14px; }
+.gloss dt { font-weight: 600; }
+.gloss dd { margin: 0; color: var(--muted); }
+.gloss dd em { font-style: normal; font-family: var(--font-data); font-size: 12px; color: var(--faint); display: block; }
+@media (max-width: 560px) { .gloss { grid-template-columns: minmax(0, 1fr); } .gloss dd { margin-bottom: 8px; } }
+footer { color: var(--faint); font-size: 13px; }
+/* compact pair tabs, shown once the scorecard scrolls away */
+.tabbar { position: fixed; left: 0; right: 0; top: 0; z-index: 20; padding-top: env(safe-area-inset-top, 0px); background: var(--bg); border-bottom: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0,0,0,0.08); transform: translateY(-110%); transition: transform 0.18s ease; }
+.tabbar.show { transform: none; }
+.tabbar .in { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 8px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tab { flex: 1 0 auto; min-width: 0; font: inherit; text-align: left; cursor: pointer; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; display: grid; gap: 1px; }
+.tab b { font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.tab small { font-size: 11.5px; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.tab small::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.tab.lead small::before { background: var(--poly); }
+.tab.early small::before { background: transparent; border: 1px solid var(--faint); }
+.tab[aria-selected="true"] { border-color: var(--poly); box-shadow: inset 0 -2px 0 var(--poly); }
+.tab:focus-visible { outline: 2px solid var(--poly); outline-offset: 2px; }
+@media (max-width: 480px) { .tab small { display: none; } .tab { padding: 6px 10px; } }
+@media (prefers-reduced-motion: reduce) { .tabbar { transition: none; } }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--fg); color: var(--bg); font-size: 12.5px; line-height: 1.4; padding: 7px 9px; border-radius: 6px; max-width: 240px; white-space: pre-line; }
+</style>
+
+<div class="wrap">
+  <div class="banner"><b>Made-up numbers.</b> This is a design mockup. Every chart, verdict and score below comes from invented data, so none of it is a real finding yet.</div>
+
+  <header>
+    <p class="eyebrow">Signal Lab · the answer so far</p>
+    <h1 id="hero"></h1>
+    <p class="lede" id="hero-sub"></p>
+  </header>
+
+  <section aria-labelledby="sc-h">
+    <div class="section-head">
+      <h2 id="sc-h">Four bets, four verdicts</h2>
+      <p>Each card pairs a Polymarket question with the stocks it should affect. Pick one to see the evidence behind its verdict.</p>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <div class="section-head">
+      <h2 id="rules-h">What counts as evidence</h2>
+      <p>We only call something a lead when it passes all of these. Otherwise the verdict is "no head start", which is a real answer and not a failure.</p>
+    </div>
+    <div class="rules">
+      <div class="rule">
+        <h3>Counts</h3>
+        <ul>
+          <li>The odds change <b>before</b> the stock, again and again, not just once.</li>
+          <li>Knowing the odds helps predict the stock <b>even after</b> we account for the stock's own recent moves.</li>
+          <li>The pattern <b>disappears</b> when we deliberately scramble the timing. If it doesn't, the method is fooling us.</li>
+          <li>It holds up even though we tested <b>many pairs</b>. If you test enough things, one of them will look good by luck.</li>
+        </ul>
+      </div>
+      <div class="rule">
+        <h3>Doesn't count</h3>
+        <ul>
+          <li>Two lines that look alike on a chart.</li>
+          <li>One dramatic day.</li>
+          <li>Both moving in the same hour. That just means both reacted to the same news.</li>
+          <li>A link that shows up in one hand-picked stock but not in the others.</li>
+        </ul>
+      </div>
+      <div class="rule null">
+        <h3>"No head start" is a result too</h3>
+        <p>If the odds only mirror what stocks are already doing, that is worth knowing. It means you can ignore them for timing and skip the effort. Proving there's nothing there is half of what this lab is for.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="detail" id="detail" aria-labelledby="d-title">
+    <div class="panel verdict-head">
+      <p class="eyebrow" id="d-eyebrow"></p>
+      <h2 id="d-title"></h2>
+      <div class="row"><span class="badge" id="d-badge"></span><span class="conf" id="d-conf"></span></div>
+      <p class="sowhat"><span class="k">So what</span><span id="d-sowhat"></span></p>
+      <div>
+        <p class="eyebrow" style="margin-top:6px">How sure are we? <span id="d-confword"></span></p>
+        <p class="conf-why" id="d-confwhy"></p>
+        <ul class="checks" id="d-checks"></ul>
+      </div>
+    </div>
+
+    <div class="tickrow" id="tickers"></div>
+
+    <div class="charts">
+      <article class="panel chartcard">
+        <p class="kicker">1 · Who moves first?</p>
+        <h3 id="t1"></h3>
+        <p class="howto"><span class="k">How to read</span>Each bar is how closely the odds and the stock move together at a given time gap. Bars to the right mean the odds moved first. Grey bars are inside the noise zone and mean nothing, and a lone blue bar is usually luck. A bar below the line still counts as a link: it means the two move in opposite directions.</p>
+        <div class="chartbox"><svg class="chart" id="c1" role="img"></svg></div>
+        <p class="sowhat"><span class="k">So what</span><span id="s1"></span></p>
+        <details><summary>For experts</summary><div class="body" id="x1"></div></details>
+      </article>
+
+      <article class="panel chartcard">
+        <p class="kicker">2 · What happens after a big odds jump?</p>
+        <h3 id="t2"></h3>
+        <p class="howto"><span class="k">How to read</span><span id="h2"></span></p>
+        <div class="chartbox"><svg class="chart" id="c2" role="img"></svg></div>
+        <p class="sowhat"><span class="k">So what</span><span id="s2"></span></p>
+        <details><summary>For experts</summary><div class="body" id="x2"></div></details>
+      </article>
+
+      <article class="panel chartcard wide">
+        <p class="kicker">3 · The raw data, for context</p>
+        <h3 id="t3"></h3>
+        <p class="howto"><span class="k">How to read</span>Top: the Polymarket crowd's estimate. Bottom: the stock. They share the same timeline, so you can look straight down from a jump in one to the other. Grey stripes are hours when the US stock market is closed, while Polymarket trades around the clock.</p>
+        <div class="legend"><span><i style="background:var(--poly)"></i><span id="lg1"></span></span><span><i style="background:var(--stock)"></i><span id="lg2"></span></span><span><i class="box"></i>Stock market closed (dotted line = overnight gap)</span></div>
+        <div class="chartbox"><svg class="chart" id="c3" role="img"></svg></div>
+        <p class="sowhat"><span class="k">So what</span>Use this chart to sanity-check, not to judge. Lines that look alike can't tell you who moved first. Charts 1 and 2 do that job.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary>Plain words used here, and the technical terms behind them</summary>
+      <dl class="gloss">
+        <dt>Odds</dt><dd>Polymarket's price for a yes/no outcome, read as a crowd-estimated probability. <em>analysis uses hourly changes in log-odds</em></dd>
+        <dt>Who moves first</dt><dd>Comparing the two series at time gaps from 12 hours one way to 12 hours the other. <em>lead-lag cross-correlation, lags −12…+12 h</em></dd>
+        <dt>Link strength</dt><dd>From −1 to 1. Zero means no link. In markets, 0.1 to 0.2 is already notable. <em>Pearson correlation</em></dd>
+        <dt>Noise zone</dt><dd>The range that pure chance would produce. <em>95% band under no relationship</em></dd>
+        <dt>Big odds jump</dt><dd>An hour in which the odds moved far more than usual. <em>&gt; 2σ hourly change</em></dd>
+        <dt>Shaded range</dt><dd>Where the true average plausibly lies. If it includes zero, the effect could be chance. <em>95% confidence interval</em></dd>
+        <dt>Helps predict beyond its own past</dt><dd>Do the odds add anything once we know the stock's recent moves? <em>Granger causality test</em></dd>
+        <dt>Scrambled-timing test</dt><dd>Rerun with shuffled times. A real signal should vanish. <em>placebo test</em></dd>
+        <dt>Many-pairs correction</dt><dd>Raises the bar because we test many pairs at once. <em>Benjamini–Hochberg FDR adjustment</em></dd>
+        <dt>Control asset</dt><dd>A stock that should have no link, used to check that the method isn't inventing patterns. <em>negative control</em></dd>
+      </dl>
+    </details>
+  </section>
+
+  <footer>Hourly data, all times UTC, 45-day window. Research only: this lab places no trades and is not investment advice.</footer>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Switch pair"><div class="in" id="tabs" role="tablist"></div></nav>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+/* ---------- Made-up inputs. In the real dashboard, verdicts and checks come from the step 7 results. ---------- */
+const TK = {
+  TLT: "long-term bonds", SPY: "S&P 500", XLF: "bank stocks", IWM: "small companies",
+  "IWM-SPY": "small vs large companies", COIN: "Coinbase", MSTR: "MicroStrategy", IBIT: "Bitcoin ETF",
+  "BTC-USD": "Bitcoin itself", XLU: "utilities, control", QQQ: "Nasdaq 100",
+};
+const PRICE0 = { TLT: 88, SPY: 655, XLF: 52, IWM: 238, "IWM-SPY": 0, COIN: 330, MSTR: 360, IBIT: 64, "BTC-USD": 112000, XLU: 84, QQQ: 590 };
+
+const PAIRS = [
+  { id: "fed", name: "Fed rate decision", odds: "Fed odds", oddsMid: "Fed odds", tickers: ["TLT", "SPY", "XLF"],
+    question: "Do bets on the next Fed rate move run ahead of bond and bank prices?",
+    signal: "Expected Fed rate change", sfmt: v => (v >= 0 ? "+" : "−") + Math.abs(v / 100).toFixed(2) + " pts",
+    base: -18, vol: 2.2, lo: -60, hi: 10, lagPeak: 2, amp: 0.17, sign: 1, ev: 0.6,
+    kind: "lead", label: "Polymarket moves first",
+    finding: "Fed odds tend to move about 2 hours before bond prices.",
+    sowhat: "This is the kind of early signal we're looking for. Before trusting it we need more Fed meetings in the data, and a 2-hour head start may be too short to use once trading costs are counted.",
+    conf: 2, confWhy: "All four tests pass, but 45 days cover only 2 Fed meetings. We'd need a longer history before calling it high.",
+    checks: [
+      ["pass", "Odds move first", "peak at +2 h on TLT, SPY and XLF"],
+      ["pass", "Odds help predict prices beyond their own past", "Granger, BH-adjusted p = 0.012"],
+      ["pass", "Link vanishes when timing is scrambled", "placebo, 1,000 shuffles"],
+      ["pass", "Holds after the many-pairs correction", "Benjamini–Hochberg, q < 0.05"],
+      ["weak", "Enough cases to be sure", "2 FOMC meetings, 23 big odds jumps"],
+    ] },
+  { id: "recession", name: "US recession", odds: "Recession odds", oddsMid: "recession odds", tickers: ["SPY", "IWM", "TLT", "IWM-SPY"],
+    question: "Does the crowd's recession chance move before stocks and bonds do?",
+    signal: "Chance of US recession", sfmt: v => v.toFixed(0) + "%",
+    base: 32, vol: 1.1, lo: 2, hi: 90, lagPeak: 0, amp: 0.17, sign: -1, ev: 0.5,
+    kind: "same", label: "Moves at the same time",
+    finding: "Recession odds and stocks react in the same hour, so neither gets a head start.",
+    sowhat: "Recession odds work like a mirror, not a crystal ball. They show what stocks are already pricing in, so watching them gives no early warning.",
+    conf: 1, confWhy: "The data points to \"no head start\", but with only 14 big odds jumps a small lead could be hiding.",
+    checks: [
+      ["fail", "Odds move first", "peak at 0 h (same hour)"],
+      ["fail", "Odds help predict prices beyond their own past", "Granger, BH-adjusted p = 0.41"],
+      ["na", "Link vanishes when timing is scrambled", "not needed: no lead to test"],
+      ["na", "Holds after the many-pairs correction", "not needed"],
+      ["weak", "Enough cases to be sure", "14 big odds jumps; we want 30+"],
+    ] },
+  { id: "bitcoin", name: "Bitcoin price ladder", odds: "Bitcoin price odds", oddsMid: "Bitcoin price odds", tickers: ["COIN", "MSTR", "IBIT", "BTC-USD", "XLU"],
+    question: "Do bets on where Bitcoin will trade this month tell us anything Bitcoin's own price doesn't?",
+    signal: "Crowd-implied Bitcoin price", sfmt: v => "$" + v.toFixed(0) + "k",
+    base: 112, vol: 0.9, lo: 60, hi: 200, lagPeak: -1, amp: 0.17, sign: 1, ev: 0.8,
+    kind: "none", label: "No extra information",
+    finding: "Bitcoin price odds trail crypto stocks by about an hour. They add nothing beyond Bitcoin's price itself.",
+    sowhat: "If you already watch Bitcoin's price, these odds tell you nothing new. The control stock (utilities) shows no link, which is a sign the method isn't seeing patterns that aren't there.",
+    conf: 3, confWhy: "Plenty of data, because crypto trades around the clock. The result is the same for all four crypto tickers, and the control behaves as it should.",
+    checks: [
+      ["fail", "Odds move first", "peak at −1 h: crypto stocks move first"],
+      ["fail", "Odds add information beyond Bitcoin's own price", "Granger controlling for BTC-USD, p = 0.38"],
+      ["pass", "Control stock shows no link", "XLU, all lags inside noise band"],
+      ["na", "Holds after the many-pairs correction", "not needed"],
+      ["pass", "Enough cases to be sure", "31 big odds jumps, 24/7 data"],
+    ] },
+  { id: "cpi", name: "US inflation (CPI)", odds: "Inflation odds", oddsMid: "inflation odds", tickers: ["TLT", "QQQ"],
+    question: "On inflation-report days, do the odds move bonds and tech stocks first?",
+    signal: "Crowd-expected inflation", sfmt: v => v.toFixed(2) + "%/yr",
+    base: 2.9, vol: 0.015, lo: 1.5, hi: 5, lagPeak: 0, amp: 0.04, sign: -1, ev: 0.15,
+    kind: "early", label: "Too early to tell",
+    finding: "Only 2 inflation-report days so far. That's too few to judge either way.",
+    sowhat: "Nothing to act on yet. Check back after roughly a year of monthly reports. The charts below show what this pair will look like, not a result.",
+    conf: 0, confWhy: "This study only looks at report days, and 45 days contain just 2 of them.",
+    checks: [
+      ["pend", "Odds move first", "release-day event study"],
+      ["pend", "Odds help predict prices beyond their own past", "not run yet"],
+      ["pend", "Link vanishes when timing is scrambled", "not run yet"],
+      ["pend", "Holds after the many-pairs correction", "not run yet"],
+      ["fail", "Enough cases to be sure", "2 CPI releases; need ~12+"],
+    ] },
+];
+const CONF_WORDS = ["Not enough data", "Low", "Medium", "High"];
+const STATUS = { pass: "✓ Passed", fail: "✗ Failed", weak: "! Weak", na: "– Not needed", pend: "… Not run" };
+const NOISE = 0.045;
+
+/* ---------- state ---------- */
+let state = { pair: 0, ticker: 0 };
+try { const s = JSON.parse(localStorage.getItem("signal-lab-v2") || "null"); if (s && typeof s.pair === "number") state = s; } catch (e) {}
+function save() { try { localStorage.setItem("signal-lab-v2", JSON.stringify(state)); } catch (e) {} }
+
+/* ---------- made-up data generator (seeded, so it's stable) ---------- */
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r) { return Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r()); }
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const HOURS = 24 * 45, T0 = Date.UTC(2026, 7, 18, 0);
+function isOpen(t, tk) { if (tk === "BTC-USD") return true; const d = new Date(t), wd = d.getUTCDay(), m = d.getUTCHours() * 60 + d.getUTCMinutes(); return wd > 0 && wd < 6 && m >= 810 && m < 1200; }
+const linkScale = tk => tk === "XLU" ? 0.1 : 1;
+
+function series(p, tk) {
+  const r = rng(hash(p.id + tk)); const sig = [], px = [], shocks = [];
+  let s = p.base, price = PRICE0[tk];
+  for (let i = 0; i < HOURS; i++) {
+    let d = gauss(r) * p.vol * 0.35; if (r() < 0.012) d += gauss(r) * p.vol * 6;
+    s = Math.min(p.hi, Math.max(p.lo, s + d)); shocks.push(d / p.vol); sig.push(s);
+  }
+  for (let i = 0; i < HOURS; i++) {
+    if (!isOpen(T0 + i * 3600e3, tk)) { px.push(null); continue; }
+    const j = i - p.lagPeak, lead = j >= 0 && j < HOURS ? shocks[j] : 0;
+    const ret = gauss(r) * 0.0035 + p.sign * linkScale(tk) * lead * 0.0012;
+    if (tk === "IWM-SPY") price += ret * 60; else price *= Math.exp(ret);
+    px.push(price);
+  }
+  return { sig, px };
+}
+function timing(p, tk) {
+  const r = rng(hash("xc" + p.id + tk)), out = [];
+  for (let k = -12; k <= 12; k++) out.push({ k, v: Math.exp(-((k - p.lagPeak) ** 2) / 2.2) * p.amp * p.sign * linkScale(tk) + gauss(r) * 0.018 });
+  return out;
+}
+function events(p, tk) {
+  // Cumulative stock move (%) from 6 h before to 12 h after a big odds jump.
+  // The move is centred on the lead/lag, so this chart agrees with chart 1.
+  const r = rng(hash("ev" + p.id + tk)), size = p.ev * p.sign * linkScale(tk), c = p.lagPeak - 0.5;
+  const S = h => 1 / (1 + Math.exp(-2.5 * (h - c)));
+  let noise = 0; const out = [];
+  for (let h = -6; h <= 12; h++) { noise += gauss(r) * 0.015; out.push({ h, v: size * (S(h) - S(-6)) + noise, w: 0.12 + Math.abs(h) * 0.025 }); }
+  return out;
+}
+
+/* ---------- helpers ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function ticks(lo, hi, n) { const step = Math.pow(10, Math.floor(Math.log10((hi - lo) / n))); const err = (hi - lo) / n / step; const m = err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1; const s = m * step, out = []; for (let v = Math.ceil(lo / s) * s; v <= hi + 1e-9; v += s) out.push(+v.toPrecision(10)); return out; }
+const pct = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "%";
+const hrs = n => n + (n === 1 ? " hour" : " hours");
+const tkName = tk => `${tk} (${TK[tk]})`;
+function stockFmt(tk, v) { if (v == null) return "market closed"; if (tk === "IWM-SPY") return v.toFixed(2) + "%"; if (tk === "BTC-USD") return "$" + (v / 1000).toFixed(1) + "k"; return "$" + v.toFixed(2); }
+function boxWidth(svg) { return Math.max(280, Math.floor(svg.parentElement.clientWidth)); }
+const tip = document.getElementById("tip");
+function showTip(ev, text) { tip.textContent = text; tip.hidden = false; const w = tip.offsetWidth; tip.style.left = Math.max(8, Math.min(ev.clientX + 12, innerWidth - w - 8)) + "px"; tip.style.top = (ev.clientY + 14) + "px"; }
+function hideTip() { tip.hidden = true; }
+function confHTML(level) { return `<span class="bars" aria-hidden="true">${[1, 2, 3].map(i => `<i class="${i <= level ? "on" : ""}"></i>`).join("")}</span><span>Confidence: <b>${CONF_WORDS[level]}</b></span>`; }
+
+/* ---------- hero + scorecard ---------- */
+function renderHero() {
+  const leads = PAIRS.filter(p => p.kind === "lead");
+  document.getElementById("hero").textContent = leads.length
+    ? `So far, only ${leads.map(p => p.odds).join(" and ")} look like an early signal. They move about 2 hours before bond prices.`
+    : "So far, none of the Polymarket odds move before the stocks they relate to.";
+  const same = PAIRS.filter(p => p.kind === "same" || p.kind === "none").length, early = PAIRS.filter(p => p.kind === "early").length;
+  document.getElementById("hero-sub").innerHTML =
+    `We're asking a single question: <b>do Polymarket betting odds change before, after, or at the same time as related stocks?</b> If they change first, they could work as an early warning. ` +
+    `Of the four pairs tested, <b>${leads.length}</b> shows the odds moving first, <b>${same}</b> show no head start, and <b>${early}</b> needs more data. Even the lead is only medium confidence for now.`;
+}
+function renderCards() {
+  const box = document.getElementById("cards"); box.innerHTML = "";
+  PAIRS.forEach((p, i) => {
+    const b = document.createElement("button"); b.className = "card"; b.setAttribute("aria-pressed", i === state.pair);
+    b.innerHTML = `<span class="name">${p.name}</span><span class="q">${p.question}</span>
+      <span class="badge ${p.kind}">${p.label}</span><span class="finding">${p.finding}</span>
+      <span class="conf">${confHTML(p.conf)}</span><span class="more">See the evidence →</span>`;
+    b.onclick = () => { state = { pair: i, ticker: 0 }; update(); document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" }); };
+    box.appendChild(b);
+  });
+}
+
+const SHORT = { fed: "Fed rate", recession: "Recession", bitcoin: "Bitcoin", cpi: "Inflation" };
+const SHORT_VERDICT = { lead: "Odds move first", same: "Same time", none: "No extra info", early: "Too early" };
+function renderTabs() {
+  const box = document.getElementById("tabs"); box.innerHTML = "";
+  PAIRS.forEach((p, i) => {
+    const b = document.createElement("button"); b.className = "tab " + p.kind; b.id = "tab-" + p.id;
+    b.setAttribute("role", "tab"); b.setAttribute("aria-selected", i === state.pair);
+    b.innerHTML = `<b>${SHORT[p.id]}</b><small>${SHORT_VERDICT[p.kind]}</small>`;
+    b.onclick = () => {
+      // Keep the section you're looking at in the same place on screen, even if text above it changes length.
+      const anchors = [...document.querySelectorAll(".verdict-head, .tickrow, .chartcard, .wrap > section.panel, footer")];
+      const a = anchors.find(e => e.getBoundingClientRect().bottom > 0), before = a ? a.getBoundingClientRect().top : 0;
+      state = { pair: i, ticker: 0 }; update();
+      if (a) scrollBy(0, a.getBoundingClientRect().top - before);
+    };
+    box.appendChild(b);
+  });
+}
+// Show the compact tabs only once the full scorecard is off screen.
+(() => {
+  const bar = document.getElementById("tabbar"), cards = document.getElementById("cards");
+  const set = on => bar.classList.toggle("show", on);
+  if ("IntersectionObserver" in window) new IntersectionObserver(([e]) => set(!e.isIntersecting && e.boundingClientRect.top < 0)).observe(cards);
+  else addEventListener("scroll", () => set(cards.getBoundingClientRect().bottom < 0), { passive: true });
+})();
+
+/* ---------- detail ---------- */
+function renderVerdict(p) {
+  document.getElementById("d-eyebrow").textContent = `${p.name} · Polymarket vs ${p.tickers.join(", ")}`;
+  document.getElementById("d-title").textContent = p.finding;
+  const badge = document.getElementById("d-badge"); badge.className = "badge " + p.kind; badge.textContent = p.label + " (example)";
+  document.getElementById("d-conf").innerHTML = confHTML(p.conf);
+  document.getElementById("d-sowhat").textContent = p.sowhat;
+  document.getElementById("d-confword").textContent = "· " + CONF_WORDS[p.conf];
+  document.getElementById("d-confwhy").textContent = p.confWhy;
+  document.getElementById("d-checks").innerHTML = p.checks.map(([s, t, x]) =>
+    `<li><span class="st ${s}">${STATUS[s]}</span><span>${t}<small>${x}</small></span></li>`).join("");
+  const tr = document.getElementById("tickers"); tr.innerHTML = `<span class="lbl">Compare against:</span>`;
+  p.tickers.forEach((tk, i) => {
+    const c = document.createElement("button"); c.className = "chip"; c.setAttribute("aria-pressed", i === state.ticker);
+    c.innerHTML = `<span>${tk}</span>${TK[tk]}`; c.onclick = () => { state.ticker = i; update(); }; tr.appendChild(c);
+  });
+}
+
+function drawTiming(p, tk) {
+  const data = timing(p, tk), best = data.reduce((a, b) => Math.abs(b.v) > Math.abs(a.v) ? b : a), clear = (() => { // a lone bar outside the noise zone is usually luck; a real link spills into the next hour too
+    const i = data.indexOf(best), out = d => d && Math.abs(d.v) > NOISE && Math.sign(d.v) === Math.sign(best.v);
+    return out(best) && (out(data[i - 1]) || out(data[i + 1]));
+  })();
+  const name = tkName(tk), k = best.k;
+  let title, so;
+  if (p.kind === "early") {
+    title = "Too few report days to read this chart yet: any bar that sticks out could easily be luck";
+    so = "This shows what to look for once more report days are in. It isn't evidence yet.";
+  } else if (!clear) {
+    const tail = data.some(d => Math.abs(d.v) > NOISE) ? "only isolated bars poke out, which is likely luck" : "every bar sits in the noise zone";
+    title = tk === "XLU" ? `As expected, the control stock shows no real link: ${tail}` : `No clear timing link between ${p.oddsMid} and ${name}: ${tail}`;
+    so = tk === "XLU" ? "This is good news for the method. A stock that should have no link shows none." : "There's nothing here to act on. That's a valid result, not a failure.";
+  } else if (k > 0) {
+    title = `${p.odds} tend to move about ${hrs(k)} before ${name}`;
+    so = `A ${k}-hour head start is the kind of early signal we're looking for, but it only counts if it also passes the checks above.`;
+  } else if (k === 0) {
+    title = `${p.odds} and ${name} move in the same hour, so neither gets a head start`;
+    so = "Both react to the same news at once, so watching the odds gives you no early warning.";
+  } else {
+    title = `${name} moves first and ${p.oddsMid} follow about ${hrs(-k)} later`;
+    so = "The odds are echoing the market, not leading it.";
+  }
+  document.getElementById("t1").textContent = title; document.getElementById("s1").textContent = so;
+  document.getElementById("x1").innerHTML = `<span>Measure: corr(Δ log-odds<sub>t</sub>, return<sub>t+k</sub>), k = −12…+12 h. Grey band: ±${NOISE} (95% under no relationship). "Clear" needs the peak and an adjacent lag outside the band, same sign.</span><span>Peak: k = <code>${k > 0 ? "+" : ""}${k} h</code>, r = <code>${best.v.toFixed(3)}</code>.</span>`;
+
+  const svg = document.getElementById("c1"); svg.innerHTML = "";
+  const W = boxWidth(svg), H = 230, m = { l: 34, r: 8, t: 22, b: 40 }, iw = W - m.l - m.r, ih = H - m.t - m.b, lim = 0.25;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+  svg.setAttribute("aria-label", title);
+  const y = v => m.t + ih / 2 - (v / lim) * (ih / 2), bw = iw / data.length;
+  el("rect", { x: m.l, y: y(NOISE), width: iw, height: y(-NOISE) - y(NOISE), fill: "var(--shade)" }, svg);
+  el("text", { x: m.l + iw - 2, y: y(NOISE) - 4, "text-anchor": "end" }, svg, "noise zone");
+  for (const v of [-0.2, 0, 0.2]) {
+    el("line", { x1: m.l, x2: m.l + iw, y1: y(v), y2: y(v), stroke: v === 0 ? "var(--faint)" : "var(--line)" }, svg);
+    el("text", { class: "num", x: m.l - 6, y: y(v) + 3, "text-anchor": "end" }, svg, v === 0 ? "0" : v.toFixed(1));
+  }
+  data.forEach((d, i) => {
+    const out = Math.abs(d.v) > NOISE, x0 = m.l + i * bw;
+    el("rect", { x: x0 + bw * 0.18, y: Math.min(y(0), y(d.v)), width: Math.max(1, bw * 0.64), height: Math.max(1, Math.abs(y(d.v) - y(0))), fill: out ? "var(--poly)" : "var(--noise)", rx: 2 }, svg);
+    if (d.k % 6 === 0) el("text", { class: "num", x: x0 + bw / 2, y: H - 24, "text-anchor": "middle" }, svg, d.k === 0 ? "0" : (d.k > 0 ? "+" : "−") + Math.abs(d.k) + "h");
+    const hit = el("rect", { x: x0, y: m.t, width: bw, height: ih, fill: "transparent" }, svg);
+    const when = d.k === 0 ? "Same hour" : d.k > 0 ? `Odds ${hrs(d.k)} ahead` : `Stock ${hrs(-d.k)} ahead`;
+    hit.addEventListener("pointermove", ev => showTip(ev, `${when}\nLink strength ${d.v.toFixed(2)}\n${out ? "Outside noise zone" : "Inside noise zone (ignore)"}`));
+    hit.addEventListener("pointerleave", hideTip);
+  });
+  if (clear) {
+    const i = data.indexOf(best), cx = m.l + i * bw + bw / 2, ty = best.v > 0 ? y(best.v) - 6 : y(best.v) + 14;
+    const lbl = k === 0 ? "strongest: same hour" : k > 0 ? `strongest: odds ${k}h ahead` : `strongest: stock ${-k}h ahead`;
+    const anchor = cx < m.l + iw * 0.25 ? "start" : cx > m.l + iw * 0.75 ? "end" : "middle";
+    el("text", { class: "ann", x: cx, y: Math.max(12, ty), "text-anchor": anchor }, svg, lbl);
+  }
+  el("text", { x: m.l, y: H - 6 }, svg, "← stock first");
+  el("text", { x: m.l + iw / 2, y: H - 6, "text-anchor": "middle" }, svg, "same hour");
+  el("text", { x: m.l + iw, y: H - 6, "text-anchor": "end" }, svg, "odds first →");
+}
+
+function drawEvents(p, tk) {
+  const data = events(p, tk), at = h => data[h + 6], name = tkName(tk);
+  const pre = at(-1).v - at(-6).v, same = at(0).v - at(-1).v, post = at(6).v - at(0).v, total = at(6).v;
+  const n = p.kind === "early" ? 2 : 14 + (hash(p.id + tk) % 20);
+  const clear = Math.abs(total) > at(6).w;
+  const big = [["pre", pre], ["same", same], ["post", post]].reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a)[0];
+  let title, so;
+  if (p.kind === "early") {
+    title = `Only ${n} big odds jumps so far, too few to say how ${name} reacts`;
+    so = "This is a preview of the chart, not a result.";
+  } else if (!clear) {
+    title = `No clear reaction in ${name} after big odds jumps. The shaded range includes zero`;
+    so = tk === "XLU" ? "As expected for the control stock." : "On average, a big odds jump doesn't tell you where this stock goes next.";
+  } else if (big === "post") {
+    title = `After a big odds jump, ${name} keeps moving: about ${pct(post)} over the next 6 hours`;
+    so = "There's a window after the jump in which the stock is still catching up. That window is what an early signal would be worth.";
+  } else if (big === "same") {
+    title = `${name} moves in the same hour as the odds jump (about ${pct(same)}), then stops`;
+    so = "By the time you see the odds jump, the stock has already moved. There's no window to use.";
+  } else {
+    title = `${name} had mostly moved before the odds jumped, so the odds were catching up`;
+    so = "The stock moved first. The odds jump is a late echo, not a warning.";
+  }
+  document.getElementById("t2").textContent = title; document.getElementById("s2").textContent = so;
+  document.getElementById("h2").textContent = `The line shows how far ${tk} moved, on average, around the ${n} hours when the odds jumped most. The dashed line is the moment of the jump. The shaded band is the range of uncertainty: if it includes the zero line, the move could be chance.`;
+  document.getElementById("x2").innerHTML = `<span>Event study: mean cumulative return around hours with |Δ log-odds| &gt; 2σ, N = <code>${n}</code>. Band = 95% CI. Window −6…+12 h, normalised at −6 h.</span><span>Before −1 h: <code>${pct(pre)}</code> · during: <code>${pct(same)}</code> · next 6 h: <code>${pct(post)}</code>.</span>`;
+
+  const svg = document.getElementById("c2"); svg.innerHTML = "";
+  const W = boxWidth(svg), H = 230, m = { l: 44, r: 10, t: 22, b: 40 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.setAttribute("aria-label", title);
+  const lo = Math.min(-0.4, ...data.map(d => d.v - d.w)), hi = Math.max(0.4, ...data.map(d => d.v + d.w));
+  const x = h => m.l + ((h + 6) / 18) * iw, y = v => m.t + ih - ((v - lo) / (hi - lo)) * ih;
+  el("rect", { x: x(0), y: m.t, width: x(6) - x(0), height: ih, fill: "var(--shade)", opacity: 0.6 }, svg);
+  el("text", { x: (x(0) + x(6)) / 2, y: m.t - 6, "text-anchor": "middle" }, svg, "next 6 hours");
+  for (const v of ticks(lo, hi, 4)) {
+    el("line", { x1: m.l, x2: m.l + iw, y1: y(v), y2: y(v), stroke: Math.abs(v) < 1e-9 ? "var(--faint)" : "var(--line)" }, svg);
+    el("text", { class: "num", x: m.l - 6, y: y(v) + 3, "text-anchor": "end" }, svg, Math.abs(v) < 1e-9 ? "0%" : pct(v).replace(".0%", "%"));
+  }
+  el("line", { x1: x(0), x2: x(0), y1: m.t, y2: m.t + ih, stroke: "var(--fg)", "stroke-dasharray": "3 3" }, svg);
+  const band = data.map(d => `${x(d.h)},${y(d.v + d.w)}`).concat(data.slice().reverse().map(d => `${x(d.h)},${y(d.v - d.w)}`));
+  el("polygon", { points: band.join(" "), fill: "var(--stock)", opacity: 0.16 }, svg);
+  el("polyline", { points: data.map(d => `${x(d.h)},${y(d.v)}`).join(" "), fill: "none", stroke: "var(--stock)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  for (const h of [-6, 0, 6, 12]) el("text", { class: "num", x: x(h), y: H - 24, "text-anchor": h === -6 ? "start" : h === 12 ? "end" : "middle" }, svg, h === 0 ? "jump" : (h > 0 ? "+" : "−") + Math.abs(h) + "h");
+  el("text", { x: m.l + iw / 2, y: H - 6, "text-anchor": "middle" }, svg, "hours before / after the odds jump");
+  const dot = el("circle", { r: 4, fill: "var(--stock)", stroke: "var(--panel)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", ev => {
+    const b = svg.getBoundingClientRect(), sx = (ev.clientX - b.left) * (W / b.width);
+    const h = Math.max(-6, Math.min(12, Math.round((sx - m.l) / iw * 18 - 6))), d = at(h);
+    dot.setAttribute("cx", x(h)); dot.setAttribute("cy", y(d.v)); dot.setAttribute("visibility", "visible");
+    showTip(ev, `${h === 0 ? "Hour of the jump" : (h > 0 ? h + "h after" : -h + "h before")}\n${tk} moved ${pct(d.v)} so far\nRange ${pct(d.v - d.w)} to ${pct(d.v + d.w)}`);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); dot.setAttribute("visibility", "hidden"); });
+}
+
+function drawRaw(p, tk) {
+  const { sig, px } = series(p, tk), name = tkName(tk);
+  const t3 = `${p.signal} and ${name} over 45 days: good for spotting news days, but not for judging who moved first`;
+  document.getElementById("t3").textContent = t3;
+  document.getElementById("lg1").textContent = "Polymarket: " + p.signal;
+  document.getElementById("lg2").textContent = tk + (tk === "IWM-SPY" ? " (relative, %)" : " price");
+  const svg = document.getElementById("c3"); svg.innerHTML = "";
+  const W = boxWidth(svg), narrow = W < 520, ph = narrow ? 110 : 130, gap = 14, m = { l: narrow ? 62 : 70, r: 8, t: 6, b: 24 };
+  const H = m.t + ph * 2 + gap + m.b, iw = W - m.l - m.r;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.setAttribute("aria-label", t3);
+  const x = i => m.l + (i / (HOURS - 1)) * iw;
+  const panel = (vals, top, color, f) => {
+    const v = vals.filter(a => a != null), lo = Math.min(...v), hi = Math.max(...v), pad = (hi - lo) * 0.1 || 1;
+    const y = a => top + ph - ((a - (lo - pad)) / (hi - lo + 2 * pad)) * ph;
+    let s = null;
+    for (let i = 0; i <= HOURS; i++) { const closed = i < HOURS && px[i] === null; if (closed && s === null) s = i; if (!closed && s !== null) { el("rect", { x: x(s), y: top, width: Math.max(0.5, x(i) - x(s)), height: ph, fill: "var(--shade)" }, svg); s = null; } }
+    for (const t of ticks(lo - pad, hi + pad, 3)) {
+      el("line", { x1: m.l, x2: m.l + iw, y1: y(t), y2: y(t), stroke: "var(--line)" }, svg);
+      el("text", { class: "num", x: m.l - 6, y: y(t) + 3, "text-anchor": "end" }, svg, f(t));
+    }
+    let d = "", pen = false;
+    vals.forEach((a, i) => { if (a == null) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(a).toFixed(1); pen = true; });
+    const pts = []; vals.forEach((a, i) => { if (a != null) pts.push((pts.length ? "L" : "M") + x(i).toFixed(1) + " " + y(a).toFixed(1)); });
+    if (pts.length !== vals.length) el("path", { d: pts.join(""), fill: "none", stroke: color, "stroke-width": 1, opacity: 0.35, "stroke-dasharray": "2 2" }, svg);
+    el("path", { d, fill: "none", stroke: color, "stroke-width": 1.6, "stroke-linejoin": "round" }, svg);
+    return y;
+  };
+  const ys = panel(sig, m.t, "var(--poly)", p.sfmt);
+  const yp = panel(px, m.t + ph + gap, "var(--stock)", v => stockFmt(tk, v).replace(/\.\d+$/, ""));
+  for (let i = 0; i < HOURS; i += 24 * 14) {
+    const d = new Date(T0 + i * 3600e3);
+    el("text", { class: "num", x: x(i), y: H - 6, "text-anchor": i === 0 ? "start" : "middle" }, svg, d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }));
+  }
+  const cross = el("line", { y1: m.t, y2: m.t + ph * 2 + gap, stroke: "var(--faint)", "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const d1 = el("circle", { r: 4, fill: "var(--poly)", stroke: "var(--panel)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const d2 = el("circle", { r: 4, fill: "var(--stock)", stroke: "var(--panel)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ph * 2 + gap, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", ev => {
+    const b = svg.getBoundingClientRect(), sx = (ev.clientX - b.left) * (W / b.width);
+    const i = Math.max(0, Math.min(HOURS - 1, Math.round((sx - m.l) / iw * (HOURS - 1))));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    d1.setAttribute("cx", x(i)); d1.setAttribute("cy", ys(sig[i])); d1.setAttribute("visibility", "visible");
+    if (px[i] != null) { d2.setAttribute("cx", x(i)); d2.setAttribute("cy", yp(px[i])); d2.setAttribute("visibility", "visible"); } else d2.setAttribute("visibility", "hidden");
+    const when = new Date(T0 + i * 3600e3).toISOString().slice(0, 16).replace("T", " ");
+    showTip(ev, `${when} UTC\n${p.signal}: ${p.sfmt(sig[i])}\n${tk}: ${stockFmt(tk, px[i])}`);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); [cross, d1, d2].forEach(e => e.setAttribute("visibility", "hidden")); });
+}
+
+function update() {
+  if (!PAIRS[state.pair]) state = { pair: 0, ticker: 0 };
+  const p = PAIRS[state.pair]; if (!p.tickers[state.ticker]) state.ticker = 0;
+  const tk = p.tickers[state.ticker];
+  save(); hideTip();
+  renderCards(); renderTabs(); renderVerdict(p); drawTiming(p, tk); drawEvents(p, tk); drawRaw(p, tk);
+}
+renderHero();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(update, 120); });
+update();
+</script>
