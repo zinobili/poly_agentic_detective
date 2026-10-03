@@ -1,7 +1,7 @@
 # Progress
 
 ## Resume here
-- **PAUSED 2026-10-03 by the user ("resume this in the future").** Work is saved on branch **`wip/step4-alignment`** (not merged, not pushed). `master` = 4925b0f = GitHub (private), CI green.
+- **RESUMED 2026-10-03.** On branch `wip/step4-alignment`. User chose **M2 = A** (fid-10 full history for Fed + BTC). Now: data-engineer round-2 fix batch per docs/handoff/step4.md (section 'Round 2 fix batch'), then check.sh, then validator r2 (LAST round).
 - Steps 0-3 DONE (validated, crusader SHIP, pushed).
 - **Step 4 (alignment): built, validator round 1 = FAIL** (docs/reviews/step4_r1.md). On the wip branch:
   - `src/poly_actor/align/` (panel builder + CLI `python -m poly_actor.align run|report [--strict-asof]`), tests (267 pass, check.sh PASS), prereg amendments A22–A24, lessons line, CLAUDE.md A22 exception note, pyproject `-m "not live"`.
