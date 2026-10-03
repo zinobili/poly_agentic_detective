@@ -2,9 +2,10 @@
 
 Active event at the END instant x of a row window (start, end]: use_from < x <= use_until
 (half-open on the left), where use_until is the roll time = official event time + 1h
-(never Gamma endDate or the closed flag). A row ending exactly at the roll time therefore still belongs to the
-OLD event, and the next row (starting at the roll) is the first row of the new one (roll_hour). Event times come from
-config/pairs.yaml, which hardcodes federalreserve.gov / bls.gov / exchange_calendars dates.
+(never Gamma endDate or the closed flag). A row ending exactly at the roll time therefore
+still belongs to the OLD event, and the next row (starting at the roll) is the first row of
+the new one (roll_hour). Event times come from config/pairs.yaml, which hardcodes
+federalreserve.gov / bls.gov / exchange_calendars dates.
 All instants are epoch seconds (UTC).
 """
 
