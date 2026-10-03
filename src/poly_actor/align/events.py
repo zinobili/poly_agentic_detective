@@ -1,7 +1,9 @@
 """Events (one market family per official event) and their active windows, from pairs.yaml.
 
-Active event at instant x: use_from <= x < use_until (half-open), where use_until is the roll
-time = official event time + 1h (never Gamma endDate or the closed flag). Event times come from
+Active event at the END instant x of a row window (start, end]: use_from < x <= use_until
+(half-open on the left), where use_until is the roll time = official event time + 1h
+(never Gamma endDate or the closed flag). A row ending exactly at the roll time therefore still belongs to the
+OLD event, and the next row (starting at the roll) is the first row of the new one (roll_hour). Event times come from
 config/pairs.yaml, which hardcodes federalreserve.gov / bls.gov / exchange_calendars dates.
 All instants are epoch seconds (UTC).
 """
@@ -168,13 +170,13 @@ def _sorted_checked(events: list[Event]) -> list[Event]:
 
 
 def active_index(events: list[Event], instants: np.ndarray) -> np.ndarray:
-    """Index of the event active at each instant (-1 when none)."""
+    """Index of the event active at each row-END instant (-1 if none): use_from < x <= use_until."""
     if not events:
         return np.full(len(instants), -1, dtype="int64")
     starts = np.array([e.use_from_s for e in events], dtype="int64")
     ends = np.array([e.use_until_s for e in events], dtype="int64")
-    idx = np.searchsorted(starts, instants, side="right") - 1
-    inside = (idx >= 0) & (instants < ends[np.maximum(idx, 0)])
+    idx = np.searchsorted(starts, instants, side="left") - 1
+    inside = (idx >= 0) & (instants <= ends[np.maximum(idx, 0)])
     return np.where(inside, idx, -1)
 
 

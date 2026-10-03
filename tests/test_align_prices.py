@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from align_synth import obs
+from poly_actor.align import consts
 from poly_actor.align.prices import PriceBook
 
 HOUR = 3600
@@ -64,7 +65,7 @@ def test_unknown_key_and_empty_frame_give_no_data():
     assert np.isnan(b.asof("zzz", np.array([5])).p[0])
 
 
-TOL = 53
+TOL = consts.PM_STAMP_TOLERANCE_S
 
 
 def tolerant(frame: pd.DataFrame) -> PriceBook:

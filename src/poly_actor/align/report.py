@@ -11,6 +11,15 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 6) if denominator else None
 
 
+def _age_quantiles(panel: pd.DataFrame) -> dict[str, float | None]:
+    """Median and 90th percentile of the Polymarket observation age (seconds) on the rows the
+    lead-lag tests use (`both_trading`). Negative ages come from the A22 tolerance only."""
+    age = panel.loc[panel["both_trading"], "pm_obs_age_s"].dropna()
+    if age.empty:
+        return {"median": None, "p90": None, "n": 0}
+    return {"median": float(age.median()), "p90": float(age.quantile(0.9)), "n": int(len(age))}
+
+
 def summarize(panel: pd.DataFrame) -> dict:
     """Counts and rates from one pair's panel.
 
@@ -46,6 +55,7 @@ def summarize(panel: pd.DataFrame) -> dict:
         "median_pm_obs_age_s": None
         if panel["pm_obs_age_s"].isna().all()
         else float(panel["pm_obs_age_s"].median()),
+        "pm_obs_age_s_both_trading": _age_quantiles(panel),
         "pm_used_tolerance_share": _rate(
             int((panel["pm_used_tolerance"] & panel["signal_level"].notna()).sum()),
             int(panel["signal_level"].notna().sum()),

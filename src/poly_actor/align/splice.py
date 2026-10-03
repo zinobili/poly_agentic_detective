@@ -2,10 +2,12 @@
 
 Rule (config/pairs.yaml `splice_rule`, pre-registration): a level of event A is never
 differenced against a level of event B. For a row with window (start, end] the event is the one
-active at `end`; the change is that event's level at `end` minus the SAME event's level at
+active at `end` (use_from < end <= use_until, so a row ending exactly at the roll is the OLD
+event's last row); the change is that event's level at `end` minus the SAME event's level at
 `start`. When the active event changes inside the window the new event's own change is used and
 `roll_hour` is set. Windows that start exactly at a roll time are flagged too (the bar the
 pre-registration calls "the bar starting at the roll time").
+`pm_obs_ts` is ts_end minus the largest age among the quotes used, i.e. the OLDEST quote.
 """
 
 from __future__ import annotations

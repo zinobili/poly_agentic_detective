@@ -297,3 +297,16 @@ def test_torn_final_line_survives_later_appends(tmp_path):
     q.write_text('{"x": 1}\nnot json\n{"y": 2}\n', encoding="utf-8")
     with pytest.raises(json.JSONDecodeError):
         Manifest(q).read()
+
+
+def test_fed_and_btc_tokens_get_a_full_life_fidelity_10_spec_cpi_and_recession_do_not(cfg):
+    specs = targets.build_token_specs(cfg, to_epoch("2026-10-01T12:00:00Z"))
+    life60 = {s.token_id: s for s in specs if s.fidelity == 60}
+    dense = {s.token_id: s for s in specs if s.fidelity == targets.FID_DENSE == 10}
+    assert dense and all(dense[t].intervals == life60[t].intervals for t in dense)
+    for spec in dense.values():
+        assert spec.pairs <= {"fed_decision", "bitcoin_monthly_ladder"}
+    cpi_rec = {t for t, s in life60.items() if s.pairs & {"us_cpi_inflation", "us_recession"}}
+    assert cpi_rec - set(dense)  # these pairs are not pulled at fid-10 (A25 scope)
+    fed = next(p for p in cfg["pairs"] if p["id"] == "fed_decision")
+    assert {o["token_id_yes"] for o in fed["markets"][0]["outcomes"].values()} <= set(dense)

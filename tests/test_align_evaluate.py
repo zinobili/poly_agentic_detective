@@ -194,3 +194,15 @@ def test_cpi_primary_edge_threshold_is_a_quarter_with_strict_flag_at_ten_percent
     assert out["reason"][0] == "edge_mass_gt_max"
     out = evaluate_cpi(ev, flat_book({"lo": 0.05, "mid": 0.95}), None, instants(0))
     assert out["edge_mass_strict_ok"][0]
+
+
+def test_cpi_edge_mass_just_above_a_quarter_is_dropped_and_exactly_a_quarter_is_kept():
+    buckets = (
+        CpiBucket("lo", "low_edge", 2.0, token="lo"),
+        CpiBucket("mid", "point", 2.5, token="mid"),
+    )
+    ev = event(cpi_buckets=buckets)
+    out = evaluate_cpi(ev, flat_book({"lo": 0.255, "mid": 0.745}), None, instants(0))
+    assert out["reason"][0] == "edge_mass_gt_max"
+    out = evaluate_cpi(ev, flat_book({"lo": 0.25, "mid": 0.75}), None, instants(0))
+    assert out["reason"][0] == "ok"

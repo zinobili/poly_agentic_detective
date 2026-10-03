@@ -116,3 +116,16 @@ def test_cli_report_prints_the_summary_of_an_existing_panel(raw_dir, tmp_path, c
     assert cli.main(["report", "--clean-dir", str(clean)]) == 0
     out = capsys.readouterr().out
     assert "== us_recession" in out and "both_trading_rows" in out
+
+
+def test_strict_build_never_looks_ahead_and_tolerant_build_uses_the_constant(raw_dir, tmp_path):
+    from poly_actor.align import consts
+
+    con = pipeline.connect_raw(raw_dir)
+    strict, sdiag = pipeline.run_pair(tiny_config(), "us_recession", con, tmp_path / "c", True)
+    tolerant, tdiag = pipeline.run_pair(tiny_config(), "us_recession", con, tmp_path / "c")
+    assert sdiag["pm_stamp_tolerance_s"] == 0 and not strict["pm_used_tolerance"].any()
+    assert strict["pm_obs_age_s"].min() >= 0
+    assert tdiag["pm_stamp_tolerance_s"] == consts.PM_STAMP_TOLERANCE_S == 53
+    assert tolerant["pm_used_tolerance"].any() and tolerant["pm_obs_age_s"].min() == -5
+    assert (tmp_path / "c" / "panel_us_recession_strict.parquet").exists()

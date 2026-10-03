@@ -64,7 +64,7 @@ def test_levels_of_two_events_are_never_differenced_across_a_roll():
     assert out["signal_change"].abs().max() < 0.02  # a 0.3 level jump would show here
 
 
-def test_roll_hour_flags_the_window_starting_at_the_roll_and_not_the_one_ending_at_it():
+def test_row_ending_at_the_roll_is_the_old_event_and_the_next_row_is_flagged():
     rows = weekend_rows()
     roll = "2025-01-12T12:00:00Z"
     events = [token_event("A", "a", SAT, roll), token_event("B", "b", roll, MON, SAT)]
@@ -73,7 +73,10 @@ def test_roll_hour_flags_the_window_starting_at_the_roll_and_not_the_one_ending_
     flagged = rows.loc[out["roll_hour"].to_numpy(), ["start_s", "end_s"]]
     assert flagged["start_s"].tolist() == [ep(roll)]
     ending_at_roll = out[rows["end_s"].to_numpy() == ep(roll)].iloc[0]
-    assert not ending_at_roll["roll_hour"] and ending_at_roll["event_id"] == "B"
+    assert not ending_at_roll["roll_hour"] and ending_at_roll["event_id"] == "A"
+    assert ending_at_roll["signal_change"] == pytest.approx(0.005)  # old event's last full hour
+    starting = out[rows["start_s"].to_numpy() == ep(roll)].iloc[0]
+    assert starting["roll_hour"] and starting["event_id"] == "B"
 
 
 def test_roll_inside_a_window_uses_the_new_events_own_change_and_flags_it():

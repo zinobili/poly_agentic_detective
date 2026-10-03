@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from align_synth import bars_for, ep, hourly_obs, obs, rows_for, token_event
+from poly_actor.align import consts
 from poly_actor.align.evaluate import evaluate_recession
 from poly_actor.align.grid import bar_table, load_sessions, restamp_bars
 from poly_actor.align.panel import PairInputs, build_panel, outage_mask, overnight_pm_change
@@ -161,7 +162,7 @@ def test_future_pm_and_bar_data_cannot_change_earlier_rows():
 
 
 def test_panel_records_the_observation_stamp_age_and_tolerance_flag():
-    tol = 53
+    tol = consts.PM_STAMP_TOLERANCE_S
     inp = make_inputs()
     pm = hourly_obs("m", ep(START), ep(END), lambda t: 0.3, offset_s=40)  # stamped 40 s after
     inp = PairInputs(**{**inp.__dict__, "pm_book": PriceBook(pm, 3 * HOUR, tolerance_s=tol)})

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -43,9 +44,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"{pair_id}: {len(panel)} rows in {time.time() - t0:.0f}s", flush=True)
     existing = _read_summary(clean_dir)
     existing.update(summaries)
-    _summary_path(clean_dir).write_text(json.dumps(existing, indent=1, sort_keys=True), "utf-8")
+    _write_summary(clean_dir, existing)
     print(report.format_report(summaries))
     return 0
+
+
+def _write_summary(clean_dir: Path, summary: dict) -> None:
+    """Temp file plus rename, like the panels: a crash never leaves a half-written summary."""
+    path = _summary_path(clean_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(summary, indent=1, sort_keys=True), "utf-8")
+    os.replace(tmp, path)
 
 
 def _read_summary(clean_dir: Path) -> dict:

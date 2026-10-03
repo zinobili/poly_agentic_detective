@@ -135,5 +135,6 @@ def build_panel(inp: PairInputs) -> pd.DataFrame:
         & panel[equity_returns].notna().all(axis=1)
         & panel["signal_level"].notna()
         & panel["signal_change"].notna()
+        & ~panel["outage_mask"]
     )
     return panel

@@ -61,7 +61,7 @@ def derived_bucket(plus: np.ndarray, minus: np.ndarray) -> tuple[np.ndarray, np.
 def cpi_implied(
     p: np.ndarray, centers: np.ndarray, is_edge: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """sum(p_i * c_i) / sum(p_i) over merged buckets; hours with edge_mass > 0.10 are dropped.
+    """sum(p_i * c_i) / sum(p_i) over merged buckets; hours with edge_mass > 0.25 are dropped (A23).
 
     p: (n, k); edge_mass = (p of edge buckets) / sum(p). Returns (level, edge_mass, reason)."""
     missing = np.isnan(p).any(axis=1)

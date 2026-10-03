@@ -15,6 +15,9 @@ MAX_PM_AGE_S = 3 * HOUR_S
 # many seconds AFTER the instant is a bounded, documented deviation from strict no-look-ahead.
 # 53 s is the smallest whole-second value covering 99% of offsets (cap 300 s). Strict mode = 0.
 PM_STAMP_TOLERANCE_S = 53
+# A25: the tolerance applies ONLY to fidelity-60 points, and only at whole-hour instants. The
+# fid-1 / fid-10 series and the :30 session-bar ends are strictly at-or-before.
+TOLERANCE_FIDELITY = 60
 # Same cap for the BTC-USD spot series (hourly bars, close known at bar end).
 MAX_SPOT_AGE_S = 3 * HOUR_S
 

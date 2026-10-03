@@ -100,11 +100,11 @@ def test_fed_roll_is_one_hour_after_the_decision(cfg):
     assert nov.event_time_s == ep("2024-11-07T19:00:00Z")
 
 
-def test_active_index_uses_half_open_windows_and_minus_one_outside():
+def test_active_index_row_ending_at_the_roll_belongs_to_the_old_event():
     a = ev.Event("A", 100, 200, 100, None)
     b = ev.Event("B", 200, 300, 200, None)
-    got = ev.active_index([a, b], np.array([99, 100, 199, 200, 299, 300]))
-    assert got.tolist() == [-1, 0, 0, 1, 1, -1]
+    got = ev.active_index([a, b], np.array([99, 100, 101, 199, 200, 201, 300, 301]))
+    assert got.tolist() == [-1, -1, 0, 0, 0, 1, 1, -1]
 
 
 def test_overlapping_events_are_rejected():
