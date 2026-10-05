@@ -21,14 +21,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "dashboard_clean"
 FULL = {
     "pair_id": "fed_decision",
     "n_events": 19,
-    "xcorr": {"ticker": "TLT", "lags": list(LAGS), "r": [0.0] * 25, "band": 0.05},
+    "xcorr": {"TLT": {"lags": list(LAGS), "r": [0.0] * 25, "band": 0.05}},
     "event_study": {
-        "ticker": "TLT",
-        "hours": [-1, 0, 1],
-        "mean": [0.0, 0.1, 0.2],
-        "ci_low": [-0.1, 0.0, 0.1],
-        "ci_high": [0.1, 0.2, 0.3],
-        "event_times": ["2025-03-19T18:00:00Z"],
+        "TLT": {
+            "hours": [-1, 0, 1],
+            "mean": [0.0, 0.1, 0.2],
+            "ci_low": [-0.1, 0.0, 0.1],
+            "ci_high": [0.1, 0.2, 0.3],
+            "event_times": ["2025-03-19T18:00:00Z"],
+        }
     },
     "checklist": [{"name": "x", "status": "Passed", "plain": "p", "technical": "t"}],
     "verdict": "Polymarket moves first",
@@ -46,8 +47,8 @@ def _write(tmp_path: Path, doc) -> None:
 def test_full_file_parses(tmp_path):
     _write(tmp_path, FULL)
     res = load_results(tmp_path, "fed_decision")
-    assert res.xcorr.ticker == "TLT" and res.verdict == "Polymarket moves first"
-    assert res.event_study.event_times[0].utcoffset().total_seconds() == 0
+    assert res.xcorr["TLT"].ticker == "TLT" and res.verdict == "Polymarket moves first"
+    assert res.event_study["TLT"].event_times[0].utcoffset().total_seconds() == 0
     assert res.confidence.level == "Medium" and res.n_events == 19
 
 
@@ -70,10 +71,17 @@ def test_file_for_another_pair_is_ignored(tmp_path):
 @pytest.mark.parametrize(
     "slot,bad",
     [
-        ("xcorr", {**FULL["xcorr"], "r": [0.0] * 24}),  # length mismatch
-        ("xcorr", {**FULL["xcorr"], "band": None}),
-        ("xcorr", {k: v for k, v in FULL["xcorr"].items() if k != "ticker"}),
-        ("event_study", {**FULL["event_study"], "event_times": ["2025-03-19T18:00:00"]}),
+        ("xcorr", {"TLT": {**FULL["xcorr"]["TLT"], "r": [0.0] * 24}}),  # length mismatch
+        ("xcorr", {"TLT": {**FULL["xcorr"]["TLT"], "band": None}}),
+        ("xcorr", {"TLT": {**FULL["xcorr"]["TLT"], "r": [float("nan")] * 25}}),
+        ("xcorr", {"TLT": {**FULL["xcorr"]["TLT"], "band": float("inf")}}),
+        ("xcorr", {"TLT": 5}),
+        ("event_study", {"TLT": {**FULL["event_study"]["TLT"], "ci_low": [float("nan")] * 3}}),
+        ("event_study", {"TLT": {**FULL["event_study"]["TLT"], "ci_high": [float("inf")] * 3}}),
+        (
+            "event_study",
+            {"TLT": {**FULL["event_study"]["TLT"], "event_times": ["2025-03-19T18:00:00"]}},
+        ),
         ("checklist", [{"name": "x", "status": "Maybe"}]),
         ("verdict", "Winner"),
         ("confidence", {"level": "Huge", "reason": "x"}),
@@ -93,8 +101,8 @@ def test_empty_object_is_all_none():
 
 def test_unsorted_lags_are_sorted():
     xc = parse_results(
-        {"pair_id": "p", "xcorr": {"ticker": "T", "lags": [1, 0], "r": [0.5, 0.1], "band": 0.1}}
-    ).xcorr
+        {"pair_id": "p", "xcorr": {"T": {"lags": [1, 0], "r": [0.5, 0.1], "band": 0.1}}}
+    ).xcorr["T"]
     assert xc.lags == (0, 1) and xc.r == (0.1, 0.5)
 
 
@@ -119,3 +127,15 @@ def test_loading_does_not_write(tmp_path):
     load_panel(tmp_path / "c", "fed_decision")
     load_results(tmp_path / "c", "fed_decision")
     assert sorted(p.name for p in (tmp_path / "c").rglob("*")) == before
+
+
+def test_one_bad_ticker_does_not_drop_the_others():
+    bad = {"lags": [0], "r": [float("nan")], "band": 0.1}
+    res = parse_results({"pair_id": "p", "xcorr": {**FULL["xcorr"], "XLU": bad}})
+    assert list(res.xcorr) == ["TLT"]
+
+
+def test_bad_entries_are_logged(caplog):
+    with caplog.at_level(logging.WARNING):
+        parse_results({"pair_id": "p", "xcorr": {"TLT": {"lags": [0], "r": [float("nan")]}}})
+    assert "invalid xcorr entry for TLT" in caplog.text

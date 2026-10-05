@@ -9,11 +9,12 @@ Shape (all timestamps ISO-8601, tz-aware UTC; the dashboard never reads local ti
     {
       "pair_id": "fed_decision",
       "n_events": 19,                                   # int, or null
-      "xcorr": {"ticker": "TLT", "lags": [-12, ..., 12],  # whole hours; + = odds first
-                "r": [...], "band": 0.05},               # one r per lag; band = +/- noise zone
-      "event_study": {"ticker": "TLT", "hours": [-6, ..., 12],
-                      "mean": [...], "ci_low": [...], "ci_high": [...],  # percent moves
-                      "event_times": ["2025-03-19T18:00:00Z", ...]},
+      "xcorr": {"TLT": {"lags": [-12, ..., 12],      # keyed by ticker; whole hours, + = odds first
+                        "r": [...], "band": 0.05},   # one r per lag; band = +/- noise zone
+                "XLU": {...}},
+      "event_study": {"TLT": {"hours": [-6, ..., 12],
+                              "mean": [...], "ci_low": [...], "ci_high": [...],  # percent moves
+                              "event_times": ["2025-03-19T18:00:00Z", ...]}},
       "checklist": [{"name": "...", "status": "Passed|Failed|Weak|Not needed|Not run",
                      "plain": "...", "technical": "..."}],
       "verdict": "Polymarket moves first|Moves at the same time|No extra information
@@ -27,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -79,8 +81,8 @@ class Confidence:
 @dataclass(frozen=True)
 class PairResults:
     pair_id: str
-    xcorr: XCorr | None = None
-    event_study: EventStudy | None = None
+    xcorr: dict[str, XCorr] | None = None  # by ticker
+    event_study: dict[str, EventStudy] | None = None  # by ticker
     checklist: tuple[CheckRow, ...] | None = None
     verdict: str | None = None
     confidence: Confidence | None = None
@@ -111,13 +113,27 @@ def parse_results(raw: dict[str, Any]) -> PairResults:
     """Pure parser: each slot is validated on its own, bad slots become ``None``."""
     return PairResults(
         pair_id=str(raw.get("pair_id")),
-        xcorr=_xcorr(raw.get("xcorr")),
-        event_study=_event_study(raw.get("event_study")),
+        xcorr=_by_ticker(raw.get("xcorr"), _xcorr, "xcorr"),
+        event_study=_by_ticker(raw.get("event_study"), _event_study, "event_study"),
         checklist=_checklist(raw.get("checklist")),
         verdict=raw.get("verdict") if raw.get("verdict") in VERDICTS else None,
         confidence=_confidence(raw.get("confidence")),
         n_events=_count(raw.get("n_events")),
     )
+
+
+def _by_ticker(raw: Any, parse: Callable[[str, Any], Any], slot: str) -> dict[str, Any] | None:
+    """Parse each ticker's entry on its own; bad entries are logged and left out."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for ticker, entry in raw.items():
+        value = parse(str(ticker), entry)
+        if value is None:
+            log.warning("Ignoring invalid %s entry for %s", slot, ticker)
+        else:
+            out[str(ticker)] = value
+    return out or None
 
 
 def _floats(values: Any) -> tuple[float, ...] | None:
@@ -126,6 +142,8 @@ def _floats(values: Any) -> tuple[float, ...] | None:
     out: list[float] = []
     for v in values:
         if isinstance(v, bool) or not isinstance(v, int | float):
+            return None
+        if not math.isfinite(v):
             return None
         out.append(float(v))
     return tuple(out)
@@ -146,15 +164,13 @@ def _count(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def _xcorr(raw: Any) -> XCorr | None:
+def _xcorr(ticker: str, raw: Any) -> XCorr | None:
     if not isinstance(raw, dict):
         return None
-    ticker, lags, r, band = _text(raw.get("ticker")), _ints(raw.get("lags")), None, None
-    r = _floats(raw.get("r"))
-    band = _floats([raw.get("band")])
-    if not (ticker and lags and r and band) or len(lags) != len(r):
+    lags, r, band = _ints(raw.get("lags")), _floats(raw.get("r")), _floats([raw.get("band")])
+    if not (lags and r and band) or len(lags) != len(r):
         return None
-    if not math.isfinite(band[0]) or band[0] < 0 or len(set(lags)) != len(lags):
+    if band[0] < 0 or len(set(lags)) != len(lags):
         return None
     order = sorted(range(len(lags)), key=lambda i: lags[i])
     return XCorr(ticker, tuple(lags[i] for i in order), tuple(r[i] for i in order), band[0])
@@ -175,13 +191,13 @@ def _event_times(values: Any) -> tuple[datetime, ...] | None:
     return tuple(out)
 
 
-def _event_study(raw: Any) -> EventStudy | None:
+def _event_study(ticker: str, raw: Any) -> EventStudy | None:
     if not isinstance(raw, dict):
         return None
-    ticker, hours = _text(raw.get("ticker")), _ints(raw.get("hours"))
+    hours = _ints(raw.get("hours"))
     mean, low, high = (_floats(raw.get(k)) for k in ("mean", "ci_low", "ci_high"))
     times = _event_times(raw.get("event_times", []))
-    if not (ticker and hours and mean and low and high) or times is None:
+    if not (hours and mean and low and high) or times is None:
         return None
     if not len(hours) == len(mean) == len(low) == len(high):
         return None

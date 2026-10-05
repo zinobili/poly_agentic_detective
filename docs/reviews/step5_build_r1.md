@@ -38,3 +38,12 @@ No invented numbers (all analysis slots are "Not run yet"; real data facts come 
 ## Known limits
 - Charts 1 and 2 are untested against real results (none exist).
 - Sticky tab behaviour and scroll-on-click need a manual browser check.
+
+## Round 2 (validator M1 and cheap minors)
+- **Contract:** `xcorr` and `event_study` are now keyed by ticker (`xcorr: {"TLT": {lags, r, band}}`, `event_study: {"TLT": {hours, mean, ci_low, ci_high, event_times}}`); the inner `ticker` field is gone. Each ticker entry is validated on its own; a bad entry is logged and left out.
+- **Non-finite:** NaN/inf in any r, band, mean or CI makes that entry "Not run yet" (logged), never "no link".
+- **UI:** a "Compare against" picker (default: the pair's main ticker; control shown as "XLU utilities (control)") drives charts 1, 2 and 3. Verdict panel and cards use the main ticker. A control with no link gets the "good news for the method" so-what.
+- **Headline:** all verdicts "Too early to tell" gives "Too early to tell for every pair so far".
+- **Minors:** forbidden-string test now covers every pair id; `.streamlit/config.toml` binds to localhost; streamlit pinned `>=1.40,<2`.
+- **Tests:** 12 new (343 total); `check.sh` PASS.
+- Left for step 6 as instructed: glossary parameters, `components.html` deprecation, BTC-USD 24/7 breaks.

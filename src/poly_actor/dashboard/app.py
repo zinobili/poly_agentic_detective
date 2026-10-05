@@ -20,7 +20,6 @@ from poly_actor.dashboard import charts, text
 from poly_actor.dashboard.contract import PairResults
 from poly_actor.dashboard.load import (
     PairSpec,
-    available_tickers,
     load_all_results,
     load_pair_specs,
     load_panel,
@@ -104,7 +103,7 @@ def _render_top(specs: tuple[PairSpec, ...], results: text.Results) -> None:
             st.markdown(f"**{info.name}**")
             st.caption(info.question)
             st.markdown(_badge(res), unsafe_allow_html=True)
-            st.write(text.finding(spec.pair_id, res))
+            st.write(text.finding(spec.pair_id, res, spec.tickers[0]))
             st.markdown(_meter(res), unsafe_allow_html=True)
             st.caption(text.confidence_view(res.confidence if res else None).reason)
             st.button(
@@ -130,14 +129,14 @@ def _render_rules() -> None:
         st.write(text.NULL_RESULT)
 
 
-def _render_verdict(pair_id: str, res: PairResults | None) -> None:
+def _render_verdict(pair_id: str, res: PairResults | None, ticker: str) -> None:
     info = text.pair_info(pair_id)
     with st.container(border=True):
         st.caption(info.name)
-        st.header(text.finding(pair_id, res))
+        st.header(text.finding(pair_id, res, ticker))
         view = text.confidence_view(res.confidence if res else None)
         st.markdown(_badge(res) + " &nbsp; " + _meter(res), unsafe_allow_html=True)
-        st.write(f"**So what.** {text.so_what(res)}")
+        st.write(f"**So what.** {text.so_what(res, ticker)}")
         st.markdown(f"**How sure are we? {_esc(view.word)}**")
         st.write(view.reason)
         for plain, technical in text.checklist_lines(res):
@@ -153,8 +152,8 @@ def _chart_card(kicker: str, title: str, how: str, so_what: str) -> None:
     st.write(f"**So what.** {so_what}")
 
 
-def _render_chart1(pair_id: str, res: PairResults | None) -> None:
-    xc = res.xcorr if res else None
+def _render_chart1(pair_id: str, res: PairResults | None, ticker: str) -> None:
+    xc = text.xcorr_for(res, ticker)
     preview = text.is_preview(res)
     with st.container(border=True):
         st.caption("1 · Who moves first?")
@@ -169,8 +168,8 @@ def _render_chart1(pair_id: str, res: PairResults | None) -> None:
             st.write(text.xcorr_expert(xc))
 
 
-def _render_chart2(pair_id: str, res: PairResults | None) -> None:
-    es = res.event_study if res else None
+def _render_chart2(pair_id: str, res: PairResults | None, ticker: str) -> None:
+    es = text.event_study_for(res, ticker)
     with st.container(border=True):
         st.caption("2 · What happens after a big odds jump?")
         st.subheader(text.event_study_title(pair_id, es, text.is_preview(res)))
@@ -184,18 +183,12 @@ def _render_chart2(pair_id: str, res: PairResults | None) -> None:
             st.write(text.event_study_expert(es, res.n_events))
 
 
-def _render_chart3(pair_id: str, panel: pd.DataFrame | None, tickers: tuple[str, ...]) -> None:
+def _render_chart3(pair_id: str, panel: pd.DataFrame | None, ticker: str) -> None:
     with st.container(border=True):
         st.caption("3 · The raw data, for context")
-        if panel is None or not tickers:
-            st.subheader("No aligned data loaded for this pair")
+        if panel is None or f"ret_{ticker}" not in panel.columns:
+            st.subheader("No aligned price data for this stock")
             return
-        ticker = st.selectbox(
-            "Stock to show",
-            tickers,
-            format_func=text.ticker_label,
-            key=f"stock_{zlib.crc32(pair_id.encode())}",
-        )
         st.subheader(f"Polymarket's estimate and {text.ticker_label(ticker)}, side by side")
         st.write(
             "**How to read.** Top: the Polymarket crowd's estimate. Bottom: the stock. They share "
@@ -211,18 +204,22 @@ def _render_chart3(pair_id: str, panel: pd.DataFrame | None, tickers: tuple[str,
 
 def _render_evidence(spec: PairSpec, res: PairResults | None, panel: pd.DataFrame | None) -> None:
     st.markdown('<div id="evidence"></div>', unsafe_allow_html=True)
-    _render_verdict(spec.pair_id, res)
-    chips = "".join(f'<span class="chip">{_esc(text.ticker_chip(t))}</span>' for t in spec.tickers)
-    st.markdown(f"**Compare against:** {chips}", unsafe_allow_html=True)
+    _render_verdict(spec.pair_id, res, spec.tickers[0])
+    ticker = st.radio(
+        "Compare against",
+        spec.tickers,
+        horizontal=True,
+        format_func=text.ticker_chip,
+        key=f"ticker_{zlib.crc32(spec.pair_id.encode())}",
+    )
     cov = panel_coverage(panel) if panel is not None else None
     if cov:
         st.caption(
             text.coverage_line(cov.first, cov.last, cov.both_trading_rows, cov.median_quote_age_s)
         )
-    _render_chart1(spec.pair_id, res)
-    _render_chart2(spec.pair_id, res)
-    tickers = available_tickers(panel, spec.tickers) if panel is not None else ()
-    _render_chart3(spec.pair_id, panel, tickers)
+    _render_chart1(spec.pair_id, res, ticker)
+    _render_chart2(spec.pair_id, res, ticker)
+    _render_chart3(spec.pair_id, panel, ticker)
 
 
 def _scroll_to_evidence() -> None:

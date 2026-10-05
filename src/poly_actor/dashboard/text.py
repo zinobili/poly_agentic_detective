@@ -244,6 +244,8 @@ def headline(results: Results) -> str:
     """One sentence generated from the per-pair verdicts."""
     if not any(r is not None and r.verdict for r in results.values()):
         return NOT_RUN_HEADLINE
+    if all(r is None or r.verdict == "Too early to tell" for r in results.values()):
+        return "Too early to tell for every pair so far"
     leads = sum(1 for r in results.values() if r and r.verdict == "Polymarket moves first")
     if leads == 0:
         return "So far, Polymarket odds have not moved ahead of stocks in any pair we tested"
@@ -324,10 +326,16 @@ def xcorr_so_what(xc: XCorr | None) -> str:
             "The odds work like a mirror, not a crystal ball. They show what the market is "
             "already pricing in, so they give no early warning."
         )
-    return (
+    note = (
         "That's a valid result, not a failure. It means the odds gave no timing edge over "
         "this stock in this data."
     )
+    if xc.ticker in CONTROL_TICKERS:
+        note += (
+            " This is a control asset, so no link is good news: the method isn't inventing "
+            "patterns."
+        )
+    return note
 
 
 def xcorr_how_to_read() -> str:
@@ -434,17 +442,22 @@ def is_preview(results: PairResults | None) -> bool:
     return bool(results and results.confidence and results.confidence.level == "Not enough data")
 
 
-def finding(pair_id: str, results: PairResults | None) -> str:
+def xcorr_for(results: PairResults | None, ticker: str) -> XCorr | None:
+    return results.xcorr.get(ticker) if results and results.xcorr else None
+
+
+def event_study_for(results: PairResults | None, ticker: str) -> EventStudy | None:
+    return results.event_study.get(ticker) if results and results.event_study else None
+
+
+def finding(pair_id: str, results: PairResults | None, ticker: str) -> str:
     """One-sentence finding for the scorecard and the verdict panel title."""
-    if results is None or results.xcorr is None:
-        return NOT_RUN
-    return xcorr_title(pair_id, results.xcorr, is_preview(results))
+    xc = xcorr_for(results, ticker)
+    return NOT_RUN if xc is None else xcorr_title(pair_id, xc, is_preview(results))
 
 
-def so_what(results: PairResults | None) -> str:
-    if results is None or results.xcorr is None:
-        return NOTHING_TO_CONCLUDE
-    return xcorr_so_what(results.xcorr)
+def so_what(results: PairResults | None, ticker: str) -> str:
+    return xcorr_so_what(xcorr_for(results, ticker))
 
 
 def not_run_chart_note() -> str:

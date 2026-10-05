@@ -23,10 +23,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dashboard = [
-    "streamlit>=1.40",
+    "streamlit>=1.40,<2",
 ]
 dev = [
-    "streamlit>=1.40",
+    "streamlit>=1.40,<2",
     "pytest>=8",
     "ruff>=0.6",
     "jupyterlab>=4",

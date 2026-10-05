@@ -76,8 +76,8 @@ def test_bar_exactly_on_the_band_is_inside():
 def test_preview_prefix_when_not_enough_data():
     xc = xcorr("TLT", p2=0.2, p3=0.15)
     assert text.xcorr_title("fed_decision", xc, preview=True).startswith("Preview: Fed odds")
-    res = results(xcorr=xc, confidence=Confidence("Not enough data", "Only 2 releases."))
-    assert text.finding("fed_decision", res).startswith("Preview: ")
+    res = results(xcorr={"TLT": xc}, confidence=Confidence("Not enough data", "Only 2 releases."))
+    assert text.finding("fed_decision", res, "TLT").startswith("Preview: ")
 
 
 def test_checklist_line_plain_first_technical_separate():
@@ -138,5 +138,24 @@ def test_no_internal_names_in_reader_strings():
         + [t for g in text.GLOSSARY for t in g]
         + [info.question for info in text._PAIR_INFO.values()]
     )
-    for banned in ("fed_decision", "pairs.yaml", "python -m", "step 6"):
+    for banned in (*text._PAIR_INFO, "pairs.yaml", "python -m", "step 6"):
         assert banned not in blob
+
+
+def test_control_ticker_no_link_is_good_news():
+    so_what = text.xcorr_so_what(xcorr("XLU"))
+    assert "That's a valid result, not a failure." in so_what and "good news" in so_what
+    assert "good news" not in text.xcorr_so_what(xcorr("TLT"))
+
+
+def test_per_ticker_finding_and_missing_ticker():
+    res = results(xcorr={"TLT": xcorr("TLT", p2=0.2, p3=0.15), "XLU": xcorr("XLU")})
+    assert text.finding("fed_decision", res, "TLT").startswith("Fed odds tend to move about 2")
+    assert text.finding("fed_decision", res, "XLU").startswith("No clear timing link")
+    assert text.finding("fed_decision", res, "SPY") == "Not run yet"
+    assert text.so_what(res, "SPY") == text.NOTHING_TO_CONCLUDE
+
+
+def test_headline_does_not_claim_a_finding_when_every_verdict_is_too_early():
+    res = {"a": results(verdict="Too early to tell"), "b": results(verdict="Too early to tell")}
+    assert text.headline(res) == "Too early to tell for every pair so far"

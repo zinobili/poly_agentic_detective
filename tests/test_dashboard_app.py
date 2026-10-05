@@ -10,15 +10,25 @@ from dashboard_helpers import LAGS
 
 APP = Path(__file__).parents[1] / "src" / "poly_actor" / "dashboard" / "app.py"
 FIXTURES = Path(__file__).parent / "fixtures" / "dashboard_clean"
-FORBIDDEN = ("fed_decision", "us_recession", "pairs.yaml", "python -m", "step 6")
+FORBIDDEN = (
+    "fed_decision",
+    "us_recession",
+    "bitcoin_monthly_ladder",
+    "us_cpi_inflation",
+    "pairs.yaml",
+    "python -m",
+    "step 6",
+)
 
 FED_RESULTS = {
     "pair_id": "fed_decision",
     "xcorr": {
-        "ticker": "TLT",
-        "lags": list(LAGS),
-        "r": [0.2 if lag in (2, 3) else 0.0 for lag in LAGS],
-        "band": 0.1,
+        "TLT": {
+            "lags": list(LAGS),
+            "r": [0.2 if lag in (2, 3) else 0.0 for lag in LAGS],
+            "band": 0.1,
+        },
+        "XLU": {"lags": list(LAGS), "r": [0.0] * len(LAGS), "band": 0.1},
     },
     "verdict": "Polymarket moves first",
     "confidence": {"level": "Medium", "reason": "Only 2 meetings."},
@@ -76,7 +86,7 @@ def test_cards_open_the_pair_without_reset(monkeypatch):
     at = run_app(monkeypatch, FIXTURES)
     at.button(key="open_1").click().run()
     assert at.session_state["selected_pair"] == "us_recession"
-    assert "No aligned data loaded for this pair" in page_text(at)
+    assert "No aligned price data for this stock" in page_text(at)
 
 
 def test_tabs_show_name_and_short_verdict(monkeypatch):
@@ -106,3 +116,48 @@ def test_junk_results_degrade_to_not_run(monkeypatch, tmp_path, junk):
     (tmp_path / "results" / "fed_decision.json").write_text(junk)
     body = page_text(run_app(monkeypatch, tmp_path))
     assert "Not run yet" in body
+
+
+def _with_fed_results(tmp_path: Path) -> Path:
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "fed_decision.json").write_text(json.dumps(FED_RESULTS))
+    (tmp_path / "panel_fed_decision.parquet").write_bytes(
+        (FIXTURES / "panel_fed_decision.parquet").read_bytes()
+    )
+    return tmp_path
+
+
+def _picker(at: AppTest):
+    return next(r for r in at.radio if r.label == "Compare against")
+
+
+def test_ticker_picker_switches_between_link_and_control(monkeypatch, tmp_path):
+    at = run_app(monkeypatch, _with_fed_results(tmp_path))
+    picker = _picker(at)
+    assert picker.options == [
+        "TLT long-term bonds",
+        "SPY S&P 500",
+        "XLF banks",
+    ]
+    assert "Fed odds tend to move about 2 hours before TLT (long-term bonds)" in page_text(at)
+
+
+def test_ticker_without_results_shows_not_run(monkeypatch, tmp_path):
+    at = run_app(monkeypatch, _with_fed_results(tmp_path))
+    _picker(at).set_value("SPY").run()
+    body = page_text(at)
+    assert "No clear timing link" not in body.split("1 · Who moves first?")[1].split("2 · What")[0]
+    assert body.split("1 · Who moves first?")[1].count("Not run yet") >= 1
+
+
+def test_control_ticker_picker_label_and_title(monkeypatch, tmp_path):
+    (tmp_path / "results").mkdir()
+    doc = {**FED_RESULTS, "pair_id": "bitcoin_monthly_ladder"}
+    (tmp_path / "results" / "bitcoin_monthly_ladder.json").write_text(json.dumps(doc))
+    at = run_app(monkeypatch, tmp_path)
+    at.button(key="open_2").click().run()
+    assert "XLU utilities (control)" in _picker(at).options
+    _picker(at).set_value("XLU").run()
+    body = page_text(at)
+    assert "No clear timing link between Bitcoin price odds and XLU (utilities)" in body
+    assert "good news" in body
