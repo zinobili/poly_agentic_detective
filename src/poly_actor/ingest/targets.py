@@ -27,7 +27,7 @@ BUFFER = DAY
 EVENT_HALF_WINDOW = DAY
 FID_LIFE = 60
 FID_EVENT = 1
-FID_DENSE = 10  # A25: full-life pull for the fed and BTC-ladder tokens
+FID_DENSE = 10  # A25: full-life pull for every token (CPI and recession added 2026-10-05)
 PUBLISH_LAG = 600  # the server publishes some points late: stop at floor(asof - 10min, hour)
 
 

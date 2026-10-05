@@ -74,8 +74,10 @@ The main finding (m1) is that the A22 tolerance is **dead in production**. Real 
 - **Repro:**
 
   ```python
-  o = DataFrame({'key': 'a', 'fidelity': [10, 10, 60], 't': [H-595, H+5, H+5], 'p': [.2, .7, .7]})
-  PriceBook(o, 10800, tolerance_s=53).asof('a', [H])
+  o = DataFrame(
+      {"key": "a", "fidelity": [10, 10, 60], "t": [H - 595, H + 5, H + 5], "p": [0.2, 0.7, 0.7]}
+  )
+  PriceBook(o, 10800, tolerance_s=53).asof("a", [H])
   # -> p 0.2, age 595, used_tolerance False
   ```
 

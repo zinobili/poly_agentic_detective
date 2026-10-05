@@ -8,3 +8,6 @@ Plan to be written at the start of step 5. Reference: `docs/design/dashboard_ux.
 - **m3:** lead-lag rows are ~10 min stale (median ~594s). Step 6 must state it and read lag-0/lag-1 with that in mind.
 - **m4:** quotes up to 3h old still enter `both_trading` (97 BTC rows > 1500s). Consider a max-age cut-off in step 6 (pre-register it before looking at results).
 - **m5:** the hand-off wording on empty fid-10 responses doesn't match the code; empty count is 14 in the build report vs 15 in the manifest. Reconcile the doc.
+
+## Minors from crusader push review 2026-10-05 (docs/reviews/push_2026-10-05_crusader_r1.md)
+Fix where step 5 touches the code: `pipeline.py` bare StopIteration on unknown pair id, unguarded `max()` on empty `stamped`, `build_pair_inputs` ~65 lines, `event_tokens` → `Event.tokens()`; `align/cli.py` errors to stdout (use stderr/logging), `time.time()` → `perf_counter`, missing docstrings/TypedDict, unlocked summary read-modify-write, corrupt-JSON error without path; `targets.py` repeated `(FID_LIFE, FID_DENSE)` loop in four planners.
