@@ -25,7 +25,6 @@ def base_panel(reasons: list[str]) -> pd.DataFrame:
             "short_day": [False] * n,
             "clipped_p_gt1": [False] * n,
             "pm_obs_age_s": [3600.0] * n,
-            "pm_used_tolerance": [True, False] * (n // 2) + [False] * (n % 2),
             "pm_overnight_change": [np.nan] * n,
             "ret_TLT": [0.0] * n,
         }

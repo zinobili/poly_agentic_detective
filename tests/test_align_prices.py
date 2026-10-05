@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 
 from align_synth import obs
-from poly_actor.align import consts
 from poly_actor.align.prices import PriceBook
 
 HOUR = 3600
@@ -65,37 +64,7 @@ def test_unknown_key_and_empty_frame_give_no_data():
     assert np.isnan(b.asof("zzz", np.array([5])).p[0])
 
 
-TOL = consts.PM_STAMP_TOLERANCE_S
-
-
-def tolerant(frame: pd.DataFrame) -> PriceBook:
-    return PriceBook(frame, 3 * HOUR, tolerance_s=TOL)
-
-
-def test_observation_at_hour_plus_tolerance_minus_one_is_used_and_flagged():
-    b = tolerant(obs("a", [HOUR + TOL - 1, 5], [0.7, 0.2]))
-    q = b.asof("a", np.array([HOUR]))
-    assert q.p[0] == 0.7
-    assert q.age_s[0] == -(TOL - 1) and q.used_tolerance[0]
-
-
-def test_observation_at_hour_plus_tolerance_plus_one_is_not_used():
-    b = tolerant(obs("a", [HOUR + TOL + 1, 5], [0.7, 0.2]))
-    q = b.asof("a", np.array([HOUR]))
-    assert q.p[0] == 0.2 and not q.used_tolerance[0]
-    assert q.age_s[0] == HOUR - 5
-
-
-def test_observation_exactly_at_hour_plus_tolerance_is_used():
-    q = tolerant(obs("a", [HOUR + TOL], [0.7])).asof("a", np.array([HOUR]))
-    assert q.p[0] == 0.7 and q.age_s[0] == -TOL
-
-
-def test_strict_book_never_flags_tolerance_use():
-    q = book(obs("a", [HOUR + 1], [0.7])).asof("a", np.array([HOUR]))
-    assert np.isnan(q.p[0]) and not q.used_tolerance[0]
-
-
-def test_observation_at_or_before_the_instant_is_not_flagged_even_with_tolerance():
-    q = tolerant(obs("a", [HOUR - 10], [0.4])).asof("a", np.array([HOUR]))
-    assert q.p[0] == 0.4 and q.age_s[0] == 10 and not q.used_tolerance[0]
+def test_book_has_no_tolerance_parameter_and_ignores_a_point_one_second_late():
+    q = book(obs("a", [HOUR + 1, 5], [0.7, 0.2])).asof("a", np.array([HOUR]))
+    assert q.p[0] == 0.2 and q.age_s[0] == HOUR - 5
+    assert not hasattr(q, "used_tolerance")

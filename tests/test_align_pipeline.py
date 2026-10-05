@@ -102,12 +102,12 @@ def test_panel_covers_the_window_and_has_the_documented_columns(raw_dir, tmp_pat
 
 def test_cli_rejects_an_unknown_pair(capsys):
     assert cli.main(["run", "--pairs", "nope"]) == 2
-    assert "unknown pair" in capsys.readouterr().out
+    assert "unknown pair" in capsys.readouterr().err
 
 
 def test_cli_report_without_panels_explains_what_to_do(tmp_path, capsys):
     assert cli.main(["report", "--clean-dir", str(tmp_path)]) == 2
-    assert "run" in capsys.readouterr().out
+    assert "run" in capsys.readouterr().err
 
 
 def test_cli_report_prints_the_summary_of_an_existing_panel(raw_dir, tmp_path, capsys):
@@ -118,14 +118,36 @@ def test_cli_report_prints_the_summary_of_an_existing_panel(raw_dir, tmp_path, c
     assert "== us_recession" in out and "both_trading_rows" in out
 
 
-def test_strict_build_never_looks_ahead_and_tolerant_build_uses_the_constant(raw_dir, tmp_path):
-    from poly_actor.align import consts
-
+def test_build_never_looks_ahead_and_writes_one_panel_per_pair(raw_dir, tmp_path):
     con = pipeline.connect_raw(raw_dir)
-    strict, sdiag = pipeline.run_pair(tiny_config(), "us_recession", con, tmp_path / "c", True)
-    tolerant, tdiag = pipeline.run_pair(tiny_config(), "us_recession", con, tmp_path / "c")
-    assert sdiag["pm_stamp_tolerance_s"] == 0 and not strict["pm_used_tolerance"].any()
-    assert strict["pm_obs_age_s"].min() >= 0
-    assert tdiag["pm_stamp_tolerance_s"] == consts.PM_STAMP_TOLERANCE_S == 53
-    assert tolerant["pm_used_tolerance"].any() and tolerant["pm_obs_age_s"].min() == -5
-    assert (tmp_path / "c" / "panel_us_recession_strict.parquet").exists()
+    panel, diag = pipeline.run_pair(tiny_config(), "us_recession", con, tmp_path / "c")
+    assert panel["pm_obs_age_s"].min() >= 0
+    assert "pm_used_tolerance" not in panel.columns and "pm_stamp_tolerance_s" not in diag
+    assert sorted(f.name for f in (tmp_path / "c").glob("*.parquet")) == [
+        "panel_us_recession.parquet"
+    ]
+
+
+def test_unknown_pair_id_raises_a_clear_error(raw_dir):
+    with pytest.raises(ValueError, match="unknown pair id 'nope'"):
+        pipeline.build_pair_inputs(tiny_config(), "nope", pipeline.connect_raw(raw_dir))
+
+
+def test_summary_merge_keeps_other_pairs_and_leaves_no_lock(tmp_path):
+    cli._merge_summary(tmp_path, {"a": {"rows": 1}})
+    cli._merge_summary(tmp_path, {"b": {"rows": 2}})
+    assert cli._read_summary(tmp_path) == {"a": {"rows": 1}, "b": {"rows": 2}}
+    assert not list(tmp_path.glob("*.lock"))
+
+
+def test_summary_lock_times_out_when_held_and_names_the_file(tmp_path):
+    (tmp_path / (cli.SUMMARY_NAME + ".lock")).write_text("")
+    with pytest.raises(TimeoutError, match="align_summary.json.lock"):
+        with cli._summary_lock(tmp_path, timeout_s=0.3):
+            pass
+
+
+def test_corrupt_summary_error_names_the_path(tmp_path):
+    (tmp_path / cli.SUMMARY_NAME).write_text("{not json")
+    with pytest.raises(ValueError, match="align_summary.json"):
+        cli._read_summary(tmp_path)
