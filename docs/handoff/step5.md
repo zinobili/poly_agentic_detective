@@ -62,3 +62,15 @@ Ticker plain names come from one mapping in `text.py` (SPY S&P 500, TLT long-ter
 
 ## Minors from crusader push review 2026-10-05 (docs/reviews/push_2026-10-05_crusader_r1.md)
 Fix where step 5 touches the code: `pipeline.py` bare StopIteration on unknown pair id, unguarded `max()` on empty `stamped`, `build_pair_inputs` ~65 lines, `event_tokens` → `Event.tokens()`; `align/cli.py` errors to stdout (use stderr/logging), `time.time()` → `perf_counter`, missing docstrings/TypedDict, unlocked summary read-modify-write, corrupt-JSON error without path; `targets.py` repeated `(FID_LIFE, FID_DENSE)` loop in four planners.
+
+## Round 2 fix batch (after validator r1 PASS-with-major: docs/reviews/step5_r1.md)
+**Major M1:** the contract allows only one `xcorr` and one `event_study` per pair. Make both ticker-keyed (`xcorr: {ticker: {...}}`, `event_study: {ticker: {...}}`) and let the reader pick the ticker in the pair's evidence section (default: the main ticker; the control is labelled "(control)").
+
+| Input | Expected |
+|---|---|
+| Fed results with xcorr for TLT (link) and XLU (all in band) | the ticker picker shows TLT and XLU (control); TLT is selected → the TLT title; XLU selected → "No clear timing link ..." plus the control-is-good-news so-what |
+| xcorr present for TLT only | TLT renders; XLU shows "Not run yet" |
+| r or ci contains NaN/inf | that slot is "Not run yet" (logged), never "no link" |
+| every verdict is "Too early to tell" | headline does not claim a finding (e.g. "Too early to tell for every pair so far") |
+
+Also fix these cheap minors: non-finite values (above), the headline (above), add the bitcoin and CPI ids to the forbidden-string test, bind the server to localhost (`.streamlit/config.toml`, `server.address = "localhost"`), and upper-pin streamlit (`<2`). Leave for step 6: the glossary's hard-coded analysis parameters (step 6 writes them into the contract), `components.html` deprecation, and the BTC-USD 24/7 line breaks.
