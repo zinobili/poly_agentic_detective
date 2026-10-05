@@ -1,7 +1,9 @@
 # Progress
 
 ## Resume here
-- **2026-10-03: round-2 fix batch BUILT** (docs/reviews/step4_build_r2.md): fid-10 ingested (2,961 calls, 0 failures), as-of = freshest across fidelities with A22 narrowed to fid-60 at whole hours, M1/M3/roll/outage fixes, A25. Fed/BTC median pm age on both_trading rows 594/595 s. Next: validator r2 (LAST round). CPI/recession still ~1,790 s stale (decision pending).
+- Updated 2026-10-05. On branch `wip/step4-alignment` (not pushed). Round-2 fix batch committed (fid-10 Fed+BTC, A25, 284 tests, check.sh PASS; Fed/BTC median age ~594s).
+- 2026-10-05 user: YES extend fid-10 to CPI + recession (handoff step4.md 'Round 2b'). Stage: data-engineer batch 2b running.
+- Next: after 2b → check.sh → validator r2 (LAST round, opus) → merge to master → crusader → push (ask before push).
 - Steps 0-3 DONE (validated, crusader SHIP, pushed).
 - **Step 4 (alignment): built, validator round 1 = FAIL** (docs/reviews/step4_r1.md). On the wip branch:
   - `src/poly_actor/align/` (panel builder + CLI `python -m poly_actor.align run|report [--strict-asof]`), tests (267 pass, check.sh PASS), prereg amendments A22–A24, lessons line, CLAUDE.md A22 exception note, pyproject `-m "not live"`.

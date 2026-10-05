@@ -9,7 +9,7 @@ clipped to [stock window start, asof). Whole-life pulls use fidelity 60. Additio
 fidelity 1 is fetched in [T - 24h, T + 24h) around every FOMC decision / CPI release T,
 for that event's tokens and for the next event's tokens (the signal rolls into it).
 
-Amendment A25 (2026-10-03): fed_decision and bitcoin_monthly_ladder tokens are also fetched at
+Amendment A25 (2026-10-03, extended 2026-10-05 to CPI and recession): every token is also fetched at
 fidelity 10 over the same whole life, so the as-of at the :30 session-bar ends is at most ~10
 minutes stale (fidelity 60 alone leaves it ~30 minutes stale). Stored under fid=10, alongside
 the gap-backfill windows; the manifest coverage makes the two passes idempotent.
@@ -152,6 +152,7 @@ def _plan_cpi(plan: _Plan, pid: str, p: dict) -> None:
         release = _ep(m["release_time_utc"])
         for tok in toks:
             plan.add(pid, tok, FID_LIFE, start, release + BUFFER, (start, release))
+            plan.add(pid, tok, FID_DENSE, start, release + BUFFER, (start, release))
         plan.event(pid, toks, release)
         if i + 1 < len(ms):
             plan.event(pid, _cpi_tokens(ms[i + 1]), release)
@@ -176,6 +177,6 @@ def _plan_btc(plan: _Plan, pid: str, p: dict) -> None:
 def _plan_recession(plan: _Plan, pid: str, p: dict) -> None:
     for m in p["markets"]:
         end = _ep(m.get("closed_time")) or _ep(m["end"])
-        plan.add(
-            pid, m["token_id_yes"], FID_LIFE, _ep(m["start"]), end + BUFFER, (_ep(m["start"]), end)
-        )
+        tok, start = m["token_id_yes"], _ep(m["start"])
+        for fid in (FID_LIFE, FID_DENSE):
+            plan.add(pid, tok, fid, start, end + BUFFER, (start, end))

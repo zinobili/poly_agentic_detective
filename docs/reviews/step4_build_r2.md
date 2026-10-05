@@ -37,3 +37,19 @@ Target (Fed and BTC median <= 600 s) met. Fed/BTC tolerant and strict are identi
 
 ## Self-check
 lessons.md items re-read: UTC, no look-ahead (strict variant tested), idempotent ingest, empty-is-not-proof, mutation-tested guards, dated amendment (A25). `bash scripts/check.sh`: 284 passed, ruff ok, pairs.yaml reproducible, ingest dry-run 0 calls, CHECK: PASS (after committing the pairs.yaml text change). Committed on `wip/step4-alignment`; not pushed.
+
+## Round 2b: fid-10 for CPI and recession (user decision 2026-10-05)
+- Code: `ingest/targets.py` now plans a full-life fid-10 spec for every token of all 4 pairs (CPI and recession added); `tests/test_ingest_fixes.py` test renamed and asserts fid-10 spans equal fid-60 spans for every token. No as-of change.
+- Ingestion: dry run 1,035 calls; real run `--pairs us_cpi_inflation,us_recession --only polymarket --no-backfill --workers 4`, background, 445 s, 1,049 calls (asof moved an hour), 828,147 rows, 0 failures, 0 429/retries. 14 fid-10 calls returned empty 200s; each was probed at fid-1 (n_rows=0) and recorded `empty_confirmed`, not as a price. Re-run dry-run: 0 calls. Log: `data/scratch/step4_2b_ingest.log`.
+- A25 extended as "(1b)" in `docs/preregistration.md` (no new letter).
+- Panels rebuilt (tolerant and strict).
+
+| pair | variant | n | median | p90 |
+|---|---|---|---|---|
+| fed_decision | tolerant / strict | 3469 | 594 | 597 |
+| bitcoin_monthly_ladder | tolerant / strict | 1691 | 595 | 598 |
+| us_cpi_inflation | tolerant / strict | 1764 | 593 | 597 |
+| us_recession | tolerant / strict | 3008 | 592 | 596 |
+
+Target (median <= 600 s for all) met. CPI n went 1759 to 1764 (new data). Self-check: lessons re-read (empty-is-not-proof honoured, idempotent, strict tested, dated amendment); check.sh result below.
+check.sh: 284 passed, ruff ok, pairs reproducible, CHECK: PASS (dry-run plans 80 calls of newly elapsed hours/stocks).

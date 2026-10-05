@@ -62,3 +62,15 @@ Fix any of these that the step 4 code touches. New step 4 code must meet the cru
 **Fix list:** M1 (tolerance scope), M2 (fid-10 download plus the freshest-observation as-of), M3 (add tests that fail if any of the 4 surviving mutations comes back: the tolerance constant, strict mode, the BTC-USD tolerance, the BTC-USD stamping), plus r1 minors where cheap.
 
 **Report** the median and p90 `pm_obs_age_s` on `both_trading` rows, per pair, strict and tolerant. **Target for Fed and BTC: median ≤ 600s.**
+
+## Round 2b: fid-10 for CPI + recession (user decision 2026-10-05)
+
+**User decision: yes.** Download fidelity-10 full-life history for every `us_cpi_inflation` and `us_recession` token, the same way as A25 (`--workers 4`, background). Extend A25 in `docs/preregistration.md` (do not add a new letter): "(1b) 2026-10-05, user decision: extended to CPI and recession tokens", with call count and failures. No code change to the as-of is expected; it already takes the freshest observation.
+
+| Situation | Expected |
+|---|---|
+| CPI/recession `both_trading` row ending 14:30Z, fid-10 point at 14:20Z | used; `pm_obs_age_s` = 600 |
+| fid-10 point at 14:30:05Z, query 14:30Z | NOT used (strict) |
+| a token whose fid-10 call returns an empty 200 | logged, not marked covered (step 3 rule), counted in the report |
+
+**Report** median and p90 `pm_obs_age_s` on `both_trading` rows for all 4 pairs, strict and tolerant. **Target for CPI and recession: median ≤ 600s.** Rebuild the panels, run `bash scripts/check.sh`, update `docs/reviews/step4_build_r2.md` (append a 2b section), commit on `wip/step4-alignment`.
