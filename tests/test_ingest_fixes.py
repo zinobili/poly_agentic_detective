@@ -297,3 +297,15 @@ def test_torn_final_line_survives_later_appends(tmp_path):
     q.write_text('{"x": 1}\nnot json\n{"y": 2}\n', encoding="utf-8")
     with pytest.raises(json.JSONDecodeError):
         Manifest(q).read()
+
+
+def test_every_token_gets_a_full_life_fidelity_10_spec_equal_to_its_fid_60_span(cfg):
+    specs = targets.build_token_specs(cfg, to_epoch("2026-10-01T12:00:00Z"))
+    life60 = {s.token_id: s for s in specs if s.fidelity == 60}
+    dense = {s.token_id: s for s in specs if s.fidelity == targets.FID_DENSE == 10}
+    assert life60 and set(dense) == set(life60)
+    assert all(dense[t].intervals == life60[t].intervals for t in dense)
+    pairs = set().union(*(s.pairs for s in dense.values()))
+    assert {"us_cpi_inflation", "us_recession"} <= pairs  # 2b extension
+    fed = next(p for p in cfg["pairs"] if p["id"] == "fed_decision")
+    assert {o["token_id_yes"] for o in fed["markets"][0]["outcomes"].values()} <= set(dense)

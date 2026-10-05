@@ -230,7 +230,11 @@ CPI_STATIC: dict = {
         "zero_mass": "if sum_i(p_i) == 0 for an hour, drop the hour (no signal; never fill with 0)",
         "edge_bucket_centres": "boundary -/+ 0.1 (e.g. '<=2.1' -> 2.0; '>=2.7' -> 2.8)",
         "edge_mass": "edge_mass = (p of low+high edge buckets) / sum_i(p_i); flag stored per hour",
-        "drop_rule": f"drop the hour if edge_mass > {CPI_EDGE_MASS_MAX}",
+        "drop_rule": (
+            f"pre-registered: drop the hour if edge_mass > {CPI_EDGE_MASS_MAX}. "
+            "SUPERSEDED by amendment A23: the panel drops at edge_mass > 0.25 and keeps "
+            f"{CPI_EDGE_MASS_MAX} as the edge_mass_strict_ok robustness flag"
+        ),
         "validation": (
             "For each resolved month, the implied CPI at release_time_utc - 1h must lie within one "
             "bucket width (0.1pp; for an edge winner, within 0.1pp beyond the boundary) of the winning "

@@ -33,9 +33,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m \"not live\""
 markers = [
-    "live: hits real external APIs (deselected by default, run with -m live)",
+    "live: hits real external APIs (deselected by default via addopts; run with -m live)",
 ]
 
 [tool.ruff]

@@ -7,6 +7,7 @@ Every bug class an independent validator has caught so far. Builders self-check 
 - **CLOB window boundaries are inconsistent.** Pad the request, clip on the client, tile windows back to back, and de-duplicate on `t`.
 - **yfinance bars are start-stamped.** Re-stamp each bar to its end using the XNYS calendar: the last bar of the day ends at the session close, and on early closes the 11:30 bar runs to 13:00. Use `cal.early_closes`, not hardcoded hours.
 - **DST.** Convert ET to UTC with `zoneinfo`, never with date-based offset rules. Test the switch days.
+- **fid-60 CLOB points are stamped seconds after the hour;** strict as-of makes them ~1h stale and biases lead-lag toward "Polymarket lags". Measure the stamp offset before resampling.
 - **Snapshot fields are look-ahead.** Lifetime volume, final `active` and `closed` flags, and anything "known at pull time" must not select data at time t. Use only facts known at t (e.g. `created_utc + 24h ≤ t`, `closed_time ≤ t`).
 
 ## Sources and dates
@@ -27,3 +28,4 @@ Every bug class an independent validator has caught so far. Builders self-check 
 - **Pre-registration changes are dated amendments,** never silent rewrites.
 - **Mutation-test the key guards** (clip, touch direction, DST, write-once). A test that survives removing its guard is useless.
 - **An empty API response is not proof of no data** when the market was trading. Confirm it with a second probe before marking the window covered.
+- **Check that a rule actually fires on real data,** not only on synthetic tests. A guard or exception that never triggers in production (e.g. A22 after dedup) makes its robustness check meaningless.

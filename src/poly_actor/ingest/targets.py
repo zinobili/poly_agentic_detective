@@ -8,6 +8,11 @@ Each token is fetched over its market life [created/start, closed) + a 24h buffe
 clipped to [stock window start, asof). Whole-life pulls use fidelity 60. Additionally
 fidelity 1 is fetched in [T - 24h, T + 24h) around every FOMC decision / CPI release T,
 for that event's tokens and for the next event's tokens (the signal rolls into it).
+
+Amendment A25 (2026-10-03, extended 2026-10-05 to CPI and recession): every token is also fetched at
+fidelity 10 over the same whole life, so the as-of at the :30 session-bar ends is at most ~10
+minutes stale (fidelity 60 alone leaves it ~30 minutes stale). Stored under fid=10, alongside
+the gap-backfill windows; the manifest coverage makes the two passes idempotent.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ BUFFER = DAY
 EVENT_HALF_WINDOW = DAY
 FID_LIFE = 60
 FID_EVENT = 1
+FID_DENSE = 10  # A25: full-life pull for the fed and BTC-ladder tokens
 PUBLISH_LAG = 600  # the server publishes some points late: stop at floor(asof - 10min, hour)
 
 
@@ -131,6 +137,7 @@ def _plan_fed(plan: _Plan, pid: str, p: dict) -> None:
         end = _ep(m["use_until_utc"]) + BUFFER
         for tok in toks:
             plan.add(pid, tok, FID_LIFE, start, end, (start, end - BUFFER))
+            plan.add(pid, tok, FID_DENSE, start, end, (start, end - BUFFER))
         plan.event(pid, toks, decision)
         if i + 1 < len(ms):  # signal rolls into the next meeting's market
             plan.event(pid, _fed_tokens(ms[i + 1]), decision)
@@ -145,6 +152,7 @@ def _plan_cpi(plan: _Plan, pid: str, p: dict) -> None:
         release = _ep(m["release_time_utc"])
         for tok in toks:
             plan.add(pid, tok, FID_LIFE, start, release + BUFFER, (start, release))
+            plan.add(pid, tok, FID_DENSE, start, release + BUFFER, (start, release))
         plan.event(pid, toks, release)
         if i + 1 < len(ms):
             plan.event(pid, _cpi_tokens(ms[i + 1]), release)
@@ -161,19 +169,14 @@ def _plan_btc(plan: _Plan, pid: str, p: dict) -> None:
                     continue
                 seen.add(tok)
                 end = _ep(r.get("closed_time")) or month_end
-                plan.add(
-                    pid,
-                    tok,
-                    FID_LIFE,
-                    _ep(r["created_utc"]),
-                    end + BUFFER,
-                    (_ep(r["created_utc"]), end),
-                )
+                created = _ep(r["created_utc"])
+                for fid in (FID_LIFE, FID_DENSE):
+                    plan.add(pid, tok, fid, created, end + BUFFER, (created, end))
 
 
 def _plan_recession(plan: _Plan, pid: str, p: dict) -> None:
     for m in p["markets"]:
         end = _ep(m.get("closed_time")) or _ep(m["end"])
-        plan.add(
-            pid, m["token_id_yes"], FID_LIFE, _ep(m["start"]), end + BUFFER, (_ep(m["start"]), end)
-        )
+        tok, start = m["token_id_yes"], _ep(m["start"])
+        for fid in (FID_LIFE, FID_DENSE):
+            plan.add(pid, tok, fid, start, end + BUFFER, (start, end))

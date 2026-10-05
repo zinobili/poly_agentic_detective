@@ -13,9 +13,11 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
+Ladder = Literal["up", "dip"]  # "up": reach K (touch from below); "dip": dip to K
 
 _EDGE_WORD = r"(less|lower|below|more|greater|higher|above)"
 _LOW_WORDS = {"less", "lower", "below"}
@@ -95,7 +97,7 @@ def isotonic_fit(values: list[float], increasing: bool) -> list[float]:
     return out
 
 
-def monotone_ladder_crossing(rungs: list[tuple[float, float]], ladder: str) -> float | None:
+def monotone_ladder_crossing(rungs: list[tuple[float, float]], ladder: Ladder) -> float | None:
     """Well-defined P=0.5 crossing of a BTC touch ladder (amendments A15, A20).
 
     A20: `select_ladder` yields at most one rung per strike per hour, so the tie
@@ -113,7 +115,7 @@ def monotone_ladder_crossing(rungs: list[tuple[float, float]], ladder: str) -> f
 
 
 def monotone_ladder_crossing_diag(
-    rungs: list[tuple[float, float]], ladder: str
+    rungs: list[tuple[float, float]], ladder: Ladder
 ) -> tuple[float | None, bool]:
     """-> (crossing, pooled). `pooled` is True when isotonic regression changed any
     value (the ladder was non-monotone); A20 logs how often this happens."""
@@ -235,7 +237,7 @@ class BtcRung:
     is non-empty for partial-window rungs."""
 
     slug: str
-    ladder: str
+    ladder: Ladder
     strike: float
     created: datetime
     closed_time: datetime | None = None
@@ -260,14 +262,14 @@ class LadderPoint:
         return self.source == "partial_window"
 
 
-def _touches(o: BtcRung, k: float, ladder: str) -> bool:
+def _touches(o: BtcRung, k: float, ladder: Ladder) -> bool:
     """A resolved-Yes rung `o` implies strike k was touched. Dip: BTC fell to o.strike,
     so it also fell to every HIGHER strike (o.strike <= k). Up: BTC rose to o.strike,
     so it also rose to every LOWER strike (o.strike >= k). Time is checked by the caller."""
     return o.resolved_yes is True and (o.strike <= k if ladder == "dip" else o.strike >= k)
 
 
-def is_touched(rungs: Sequence[BtcRung], ladder: str, k: float, t: datetime) -> bool:
+def is_touched(rungs: Sequence[BtcRung], ladder: Ladder, k: float, t: datetime) -> bool:
     """A20: strike k is touched at t if any live same-ladder rung that touches it
     (`_touches`) has closed_time <= t. If BTC dipped to 60k it dipped to every higher
     dip strike; if it reached 100k it reached every lower up strike."""
@@ -305,7 +307,7 @@ def flag_created_after_touch(rungs: Sequence[BtcRung]) -> set[str]:
 
 def select_ladder(
     rungs: Sequence[BtcRung],
-    ladder: str,
+    ladder: Ladder,
     t: datetime,
     quotes: Mapping[str, float],
     min_age_h: float = 24,
