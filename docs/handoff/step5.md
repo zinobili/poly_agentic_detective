@@ -3,7 +3,7 @@
 Plan to be written at the start of step 5. Reference: `docs/design/dashboard_ux.md` + `docs/design/dashboard_mockup.html`.
 
 ## Minors carried over from step 4 validator r2 (docs/reviews/step4_r2.md)
-- **m1 — A22 tolerance never fires on real data.** Every fid-60 point has a fid-1/fid-10 twin at the same stamp; dedup keeps the finer one, so strict == tolerant byte for byte and `pm_used_tolerance` is 0 everywhere. Not look-ahead (stricter than approved). **User decision pending:** retire A22 with a dated amendment (recommended), or build the tolerance series before dedup.
+- **m1 — A22 tolerance never fires on real data.** Every fid-60 point has a fid-1/fid-10 twin at the same stamp; dedup keeps the finer one, so strict == tolerant byte for byte and `pm_used_tolerance` is 0 everywhere. Not look-ahead (stricter than approved). **RESOLVED 2026-10-05: user retired A22 (prereg A26).** Step 5 task: remove `PM_STAMP_TOLERANCE_S`, the `pm_used_tolerance` column, the `--strict-asof` flag and the `_strict` panels. Replace the tolerance tests with "any point stamped after the instant is never used, at any fidelity" (fid-60 at 14:00:40Z, query 14:00Z → NOT used). The panels must come out byte-identical to the current strict panels.
 - **m2:** no test that the CLI passes `--strict-asof` through (`align/cli.py:41`); that mutant survived.
 - **m3:** lead-lag rows are ~10 min stale (median ~594s). Step 6 must state it and read lag-0/lag-1 with that in mind.
 - **m4:** quotes up to 3h old still enter `both_trading` (97 BTC rows > 1500s). Consider a max-age cut-off in step 6 (pre-register it before looking at results).

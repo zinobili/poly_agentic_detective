@@ -10,7 +10,7 @@ Polymarket-to-stock-market signal lab. Goal of milestone 1: find out whether Pol
 
 ## Hard rules
 - **UTC everywhere.** Store tz-aware UTC timestamps. Never use naive datetimes (ruff `DTZ` enforces).
-- **No look-ahead.** A value at time t may only use data available at or before t. **One user-approved exception (2026-10-03, prereg A22):** when resampling Polymarket fid-60 points to the hourly grid, a point stamped up to `PM_STAMP_TOLERANCE_S` seconds after the hour counts for that hour, because the CLOB stamps its hourly samples a few seconds late. Rows that rely on it are flagged `pm_used_tolerance`, and step 6 must also run the strict version as a robustness check. No other exceptions.
+- **No look-ahead.** A value at time t may only use data available at or before t. No exceptions. (The A22 sampling tolerance was retired on 2026-10-05 by prereg A26.)
 - **Tests never hit the network** unless marked `@pytest.mark.live`. Use saved responses in `tests/fixtures/`.
 - **Raw data is immutable.** Ingestion writes to `data/raw/`; derived data goes to `data/clean/`. Never delete raw.
 - **Paper only.** No code that places real orders or moves real money.
