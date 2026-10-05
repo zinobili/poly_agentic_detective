@@ -64,7 +64,7 @@ def spliced_signal(
     """Signal level, spliced change and event flags per row window (start_s, end_s].
 
     Columns: event_id, signal_level, signal_reason, signal_change, roll_hour, event_hour,
-    pm_obs_ts, pm_obs_age_s, pm_used_tolerance, clipped_p_gt1, plus the evaluator's
+    pm_obs_ts, pm_obs_age_s, clipped_p_gt1, plus the evaluator's
     diagnostics (NaN/False where no event)."""
     n = len(end_s)
     active = active_index(events, end_s)
@@ -77,7 +77,6 @@ def spliced_signal(
         if col in frame:
             frame[col] = frame[col].fillna(0).astype("int64")
     frame["clipped"] = frame["clipped"].fillna(False).astype(bool)
-    frame["used_tol"] = frame["used_tol"].fillna(False).astype(bool)
     frame["reason"] = frame["reason"].where(active >= 0, NO_EVENT)
 
     level_end = frame["level"].to_numpy(dtype="float64")
@@ -111,11 +110,8 @@ def spliced_signal(
             "event_hour": _count_in(event_times, start_s, end_s, "right") > 0,
             "pm_obs_ts": pd.to_datetime(end_s - age, unit="s", utc=True),
             "pm_obs_age_s": age,
-            "pm_used_tolerance": frame["used_tol"].to_numpy(),
             "clipped_p_gt1": frame["clipped"].to_numpy(),
         }
     )
-    extras = [
-        c for c in frame.columns if c not in ("level", "reason", "age_s", "clipped", "used_tol")
-    ]
+    extras = [c for c in frame.columns if c not in ("level", "reason", "age_s", "clipped")]
     return pd.concat([out, frame[extras].reset_index(drop=True)], axis=1)

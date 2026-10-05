@@ -66,6 +66,18 @@ class Event:
     btc: BtcSpec | None = None
     token: str | None = None  # single-token markets (recession)
 
+    def tokens(self) -> list[str]:
+        """Every Polymarket token this event's market family may read."""
+        out: list[str] = [b.token for b in self.fed_buckets] + list(self.fed_other_tokens)
+        for c in self.cpi_buckets:
+            out += [c.token] if c.token else []
+            out += list(c.plus_tokens) + list(c.minus_tokens)
+        if self.btc:
+            out += list(self.btc.token_by_slug.values())
+        if self.token:
+            out.append(self.token)
+        return out
+
 
 def fed_events(pair: Mapping) -> list[Event]:
     out = []

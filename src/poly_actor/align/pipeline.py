@@ -16,7 +16,7 @@ import pandas as pd
 import yaml
 
 from poly_actor.align import events as ev
-from poly_actor.align.consts import HOUR_S, MAX_PM_AGE_S, MAX_SPOT_AGE_S, PM_STAMP_TOLERANCE_S
+from poly_actor.align.consts import HOUR_S, MAX_PM_AGE_S, MAX_SPOT_AGE_S
 from poly_actor.align.evaluate import EVALUATORS
 from poly_actor.align.grid import (
     bar_table,
@@ -50,18 +50,8 @@ def load_config(path: Path | None = None) -> dict:
 
 
 def event_tokens(events: list[ev.Event]) -> list[str]:
-    """Every Polymarket token an event family may read."""
-    tokens: list[str] = []
-    for e in events:
-        tokens += [b.token for b in e.fed_buckets] + list(e.fed_other_tokens)
-        for c in e.cpi_buckets:
-            tokens += [c.token] if c.token else []
-            tokens += list(c.plus_tokens) + list(c.minus_tokens)
-        if e.btc:
-            tokens += list(e.btc.token_by_slug.values())
-        if e.token:
-            tokens.append(e.token)
-    return sorted(set(tokens))
+    """Every Polymarket token the event families may read, sorted and unique."""
+    return sorted({tok for e in events for tok in e.tokens()})
 
 
 def load_polymarket(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> pd.DataFrame:
@@ -90,52 +80,68 @@ def spot_obs(bars: pd.DataFrame, ticker: str) -> pd.DataFrame:
     )
 
 
-def build_pair_inputs(
-    cfg: Mapping,
-    pair_id: str,
-    con: duckdb.DuckDBPyConnection,
-    tolerance_s: int = PM_STAMP_TOLERANCE_S,
-) -> tuple[PairInputs, dict]:
-    """Load and prepare everything for one pair. Returns (inputs, loading diagnostics)."""
-    pair = next(p for p in cfg["pairs"] if p["id"] == pair_id)
-    events = EVENT_BUILDERS[pair_id](pair)
-    tickers = stock_tickers(cfg, [pair_id])
-    bars = load_bars(con, tickers)
-    start_s = to_epoch(pair["coverage"]["stock_window_start_utc"])
-    equities = [t for t in tickers if not t.endswith(SPOT_SUFFIX)]
-    last_bar = bars[bars["ticker"].isin(equities)]["ts"].max()
-    end_s = int(pd.Timestamp(last_bar).timestamp()) + HOUR_S
-    sessions = load_sessions(start_s, end_s)
-    table = bar_table(sessions)
+def find_pair(cfg: Mapping, pair_id: str) -> Mapping:
+    """The pairs.yaml entry for `pair_id`; a clear error names the known ids."""
+    for pair in cfg["pairs"]:
+        if pair["id"] == pair_id:
+            return pair
+    raise ValueError(f"unknown pair id {pair_id!r}; known: {pair_ids(cfg)}")
+
+
+def _restamped_equities(
+    bars: pd.DataFrame, equities: list[str], table: pd.DataFrame
+) -> tuple[dict[str, pd.DataFrame], int]:
+    """Re-stamp each equity's start-stamped bars to bar ends. Returns (frames, unmatched count)."""
     stamped: dict[str, pd.DataFrame] = {}
     unmatched = 0
     for ticker in equities:
         stamped[ticker], bad = restamp_bars(bars[bars["ticker"] == ticker], table)
         unmatched += len(bad)
-    gap_table = stock_gap_table(bars[bars["ticker"].isin(equities)][["ticker", "ts"]])
+    return stamped, unmatched
+
+
+def _spot_book(bars: pd.DataFrame, tickers: list[str]) -> PriceBook:
+    frames = [spot_obs(bars, t) for t in tickers if t.endswith(SPOT_SUFFIX)]
+    spot_df = pd.concat(frames) if frames else pd.DataFrame(columns=["key", "t", "p"])
+    return PriceBook(spot_df, MAX_SPOT_AGE_S, clip=False)
+
+
+def build_pair_inputs(
+    cfg: Mapping, pair_id: str, con: duckdb.DuckDBPyConnection
+) -> tuple[PairInputs, dict]:
+    """Load and prepare everything for one pair. Returns (inputs, loading diagnostics)."""
+    pair = find_pair(cfg, pair_id)
+    events = EVENT_BUILDERS[pair_id](pair)
+    tickers = stock_tickers(cfg, [pair_id])
+    bars = load_bars(con, tickers)
+    start_s = to_epoch(pair["coverage"]["stock_window_start_utc"])
+    equities = [t for t in tickers if not t.endswith(SPOT_SUFFIX)]
+    equity_bars = bars[bars["ticker"].isin(equities)]
+    if equity_bars.empty:
+        raise ValueError(f"{pair_id}: no raw stock bars for {equities}; run the stock ingest")
+    end_s = int(pd.Timestamp(equity_bars["ts"].max()).timestamp()) + HOUR_S
+    sessions = load_sessions(start_s, end_s)
+    stamped, unmatched = _restamped_equities(bars, equities, bar_table(sessions))
+    gap_table = stock_gap_table(equity_bars[["ticker", "ts"]])
     rows = build_row_grid(start_s, end_s, sessions)
     rows = rows[rows["end_s"] <= max(s["end_s"].max() for s in stamped.values())]
     poly = load_polymarket(con, event_tokens(events))
-    spot_frames = [spot_obs(bars, t) for t in tickers if t.endswith(SPOT_SUFFIX)]
-    spot_df = pd.concat(spot_frames) if spot_frames else pd.DataFrame(columns=["key", "t", "p"])
     inputs = PairInputs(
         pair_id=pair_id,
         tickers=tickers,
         events=events,
         evaluator=EVALUATORS[pair_id],
-        pm_book=PriceBook(poly, MAX_PM_AGE_S, clip=True, tolerance_s=tolerance_s),
-        spot_book=PriceBook(spot_df, MAX_SPOT_AGE_S, clip=False),
+        pm_book=PriceBook(poly, MAX_PM_AGE_S, clip=True),
+        spot_book=_spot_book(bars, tickers),
         rows=rows.reset_index(drop=True),
         sessions=sessions,
         bars=stamped,
         short_days=short_day_sessions(gap_table, equities),
     )
-    nan_bars = int(sum(s["nan_bar"].sum() for s in stamped.values()))
     diag = {
         "unmatched_bars": unmatched,
-        "nan_bars": nan_bars,
+        "nan_bars": int(sum(s["nan_bar"].sum() for s in stamped.values())),
         "pm_observations": len(poly),
-        "pm_stamp_tolerance_s": tolerance_s,
     }
     return inputs, diag
 
@@ -148,9 +154,8 @@ def write_atomic(frame: pd.DataFrame, path: Path) -> None:
     os.replace(tmp, path)
 
 
-def panel_path(pair_id: str, clean_dir: Path = CLEAN_DIR, strict: bool = False) -> Path:
-    """Panel file; the strict as-of robustness variant gets a `_strict` suffix."""
-    return clean_dir / f"panel_{pair_id}{'_strict' if strict else ''}.parquet"
+def panel_path(pair_id: str, clean_dir: Path = CLEAN_DIR) -> Path:
+    return clean_dir / f"panel_{pair_id}.parquet"
 
 
 def run_pair(
@@ -158,18 +163,15 @@ def run_pair(
     pair_id: str,
     con: duckdb.DuckDBPyConnection,
     clean_dir: Path = CLEAN_DIR,
-    strict: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
-    """Build and write one pair's panel. `strict` uses tolerance 0 (pure at-or-before as-of,
-    the step 6 robustness variant). Returns (panel, loading diagnostics)."""
-    tolerance_s = 0 if strict else PM_STAMP_TOLERANCE_S
-    inputs, diag = build_pair_inputs(cfg, pair_id, con, tolerance_s)
+    """Build and write one pair's panel. Returns (panel, loading diagnostics)."""
+    inputs, diag = build_pair_inputs(cfg, pair_id, con)
     if diag["unmatched_bars"]:
         log.warning(
             "%s: %d stock bars did not match an XNYS bar start", pair_id, diag["unmatched_bars"]
         )
     panel = build_panel(inputs)
-    write_atomic(panel, panel_path(pair_id, clean_dir, strict))
+    write_atomic(panel, panel_path(pair_id, clean_dir))
     return panel, diag
 
 

@@ -112,3 +112,29 @@ def test_overlapping_events_are_rejected():
     b = ev.Event("B", 200, 300, 200, None)
     with pytest.raises(ValueError, match="overlap"):
         ev._sorted_checked([a, b])
+
+
+def test_event_tokens_collects_every_family_and_pipeline_dedups_and_sorts():
+    fed = ev.Event(
+        "m",
+        0,
+        1,
+        0,
+        None,
+        fed_buckets=(ev.FedBucket("b", 0.0), ev.FedBucket("a", 25.0)),
+        fed_other_tokens=("c",),
+    )
+    cpi = ev.Event(
+        "c",
+        0,
+        1,
+        0,
+        None,
+        cpi_buckets=(ev.CpiBucket("x", "range", 3.0, None, ("p1",), ("m1",)),),
+    )
+    rec = ev.Event("r", 0, 1, 0, None, token="a")
+    assert fed.tokens() == ["b", "a", "c"]
+    assert cpi.tokens() == ["p1", "m1"]
+    from poly_actor.align.pipeline import event_tokens
+
+    assert event_tokens([fed, cpi, rec]) == ["a", "b", "c", "m1", "p1"]

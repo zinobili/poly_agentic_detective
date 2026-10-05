@@ -47,12 +47,6 @@ def _any_clipped(quotes: list[Quotes], n: int) -> np.ndarray:
     return np.column_stack([q.clipped for q in quotes]).any(axis=1)
 
 
-def _any_tolerance(quotes: list[Quotes], n: int) -> np.ndarray:
-    if not quotes:
-        return np.zeros(n, dtype=bool)
-    return np.column_stack([q.used_tolerance for q in quotes]).any(axis=1)
-
-
 def _gate_usable(frame: pd.DataFrame, event: Event, instants: np.ndarray) -> pd.DataFrame:
     """Hours before the event's first usable instant carry no signal."""
     early = instants < event.first_usable_s
@@ -78,7 +72,6 @@ def evaluate_fed(
             "reason": reason,
             "age_s": _max_age(named + other, n),
             "clipped": _any_clipped(named + other, n),
-            "used_tol": _any_tolerance(named + other, n),
             "other_mass": other_mass,
         }
     )
@@ -120,7 +113,6 @@ def evaluate_cpi(
             "reason": reason,
             "age_s": _max_age(quotes, n),
             "clipped": _any_clipped(quotes, n),
-            "used_tol": _any_tolerance(quotes, n),
             "edge_mass_strict_ok": edge_mass <= CPI_EDGE_MASS_STRICT,
             "edge_mass": edge_mass,
             "cpi_has_derived": np.full(n, has_derived),
@@ -141,7 +133,6 @@ def evaluate_recession(
             "reason": np.where(np.isnan(q.p), MISSING_BUCKET, OK),
             "age_s": q.age_s,
             "clipped": q.clipped,
-            "used_tol": q.used_tolerance,
         }
     )
     return _gate_usable(frame, event, instants)
@@ -206,14 +197,12 @@ def evaluate_btc(
     hours: dict[int, _BtcHour] = {}
     age = np.full(n, np.nan)
     clipped = np.zeros(n, dtype=bool)
-    used_tol = np.zeros(n, dtype=bool)
     reason = np.full(n, BEFORE_USABLE, dtype=object)
     for i in np.flatnonzero(instants >= event.first_usable_s):
         t = datetime.fromtimestamp(int(instants[i]), UTC)
         live = [s for s, q in quotes.items() if not np.isnan(q.p[i])]
         age[i] = max((quotes[s].age_s[i] for s in live), default=np.nan)
         clipped[i] = any(quotes[s].clipped[i] for s in live)
-        used_tol[i] = any(quotes[s].used_tolerance[i] for s in live)
         hours[i] = _btc_hour(spec, t, {s: float(quotes[s].p[i]) for s in live})
         reason[i] = hours[i].reason
     frame = pd.DataFrame(
@@ -227,7 +216,6 @@ def evaluate_btc(
             "btc_spot": spot_p,
             "age_s": age,
             "clipped": clipped,
-            "used_tol": used_tol,
             "reason": reason,
         }
     )

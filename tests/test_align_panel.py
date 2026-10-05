@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from align_synth import bars_for, ep, hourly_obs, obs, rows_for, token_event
-from poly_actor.align import consts
 from poly_actor.align.evaluate import evaluate_recession
 from poly_actor.align.grid import bar_table, load_sessions, restamp_bars
 from poly_actor.align.panel import PairInputs, build_panel, outage_mask, overnight_pm_change
@@ -161,15 +160,12 @@ def test_future_pm_and_bar_data_cannot_change_earlier_rows():
     assert not np.array_equal(a["ret_TLT"].to_numpy(), b["ret_TLT"].to_numpy(), equal_nan=True)
 
 
-def test_panel_records_the_observation_stamp_age_and_tolerance_flag():
-    tol = consts.PM_STAMP_TOLERANCE_S
+def test_panel_records_the_observation_stamp_and_age_without_a_tolerance_column():
     inp = make_inputs()
     pm = hourly_obs("m", ep(START), ep(END), lambda t: 0.3, offset_s=40)  # stamped 40 s after
-    inp = PairInputs(**{**inp.__dict__, "pm_book": PriceBook(pm, 3 * HOUR, tolerance_s=tol)})
+    inp = PairInputs(**{**inp.__dict__, "pm_book": PriceBook(pm, 3 * HOUR)})
     panel = build_panel(inp)
     row = row_ending(panel, "2025-01-15T03:00:00Z")
-    assert row["pm_used_tolerance"] and row["pm_obs_age_s"] == -40
-    assert row["pm_obs_ts"] == pd.Timestamp("2025-01-15T03:00:40Z")
-    strict = PairInputs(**{**inp.__dict__, "pm_book": PriceBook(pm, 3 * HOUR)})
-    srow = row_ending(build_panel(strict), "2025-01-15T03:00:00Z")
-    assert not srow["pm_used_tolerance"] and srow["pm_obs_age_s"] == 3600 - 40
+    assert "pm_used_tolerance" not in panel.columns
+    assert row["pm_obs_age_s"] == 3600 - 40
+    assert row["pm_obs_ts"] == pd.Timestamp("2025-01-15T02:00:40Z")

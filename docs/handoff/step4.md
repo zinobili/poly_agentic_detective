@@ -71,6 +71,6 @@ Fix any of these that the step 4 code touches. New step 4 code must meet the cru
 |---|---|
 | CPI/recession `both_trading` row ending 14:30Z, fid-10 point at 14:20Z | used; `pm_obs_age_s` = 600 |
 | fid-10 point at 14:30:05Z, query 14:30Z | NOT used (strict) |
-| a token whose fid-10 call returns an empty 200 | logged, not marked covered (step 3 rule), counted in the report |
+| a token whose fid-10 call returns an empty 200 | recorded `empty`, never counted as covered; after the fid-1 probe also comes back empty it becomes `empty_confirmed` (covered; step 3 rule). Manifest total: 15 fid-10 `empty_confirmed` (14 from the 2b run, 1 from 2026-10-01); all verified dataless in raw (A5-m5 reconciled in step 5a) |
 
 **Report** median and p90 `pm_obs_age_s` on `both_trading` rows for all 4 pairs, strict and tolerant. **Target for CPI and recession: median ≤ 600s.** Rebuild the panels, run `bash scripts/check.sh`, update `docs/reviews/step4_build_r2.md` (append a 2b section), commit on `wip/step4-alignment`.
