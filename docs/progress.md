@@ -2,7 +2,7 @@
 
 ## Resume here
 - Updated 2026-10-05. On branch `wip/step4-alignment` (not pushed). Round-2 fix batch committed (fid-10 Fed+BTC, A25, 284 tests, check.sh PASS; Fed/BTC median age ~594s).
-- 2026-10-05 user: YES extend fid-10 to CPI + recession (handoff step4.md 'Round 2b'). Batch 2b DONE (8200c8c): 1,049 calls, 0 failures; median age 592-595s all 4 pairs; check.sh PASS. Validator r2 = PASS (0 blockers/majors, 5 minors → docs/handoff/step5.md; docs/reviews/step4_r2.md). Merged to master; crusader SHIP WITH FIXES (major = ruff format on review md, fixed; minors → step5.md); check.sh PASS. 2026-10-05 user: push OK; A22 RETIRED (A26; CLAUDE.md updated; code removal = step 5 task). Next: step 5 plan (docs/handoff/step5.md).
+- 2026-10-05 user: YES extend fid-10 to CPI + recession (handoff step4.md 'Round 2b'). Batch 2b DONE (8200c8c): 1,049 calls, 0 failures; median age 592-595s all 4 pairs; check.sh PASS. Validator r2 = PASS (0 blockers/majors, 5 minors → docs/handoff/step5.md; docs/reviews/step4_r2.md). Merged to master; crusader SHIP WITH FIXES (major = ruff format on review md, fixed; minors → step5.md); check.sh PASS. 2026-10-05 user: push OK; A22 RETIRED (A26; CLAUDE.md updated; code removal = step 5 task). Step 5 STARTED on branch `step5-dashboard`: plan written (docs/handoff/step5.md). Stage: build batch 5a (A22 code removal + minors), then 5b (dashboard) → check.sh → validator.
 - Next: after 2b → check.sh → validator r2 (LAST round, opus) → merge to master → crusader → push (ask before push).
 - Steps 0-3 DONE (validated, crusader SHIP, pushed).
 - **Step 4 (alignment): built, validator round 1 = FAIL** (docs/reviews/step4_r1.md). On the wip branch:
@@ -30,7 +30,7 @@
 | 2 Pairs (history) | R1 **FAIL** (11 items) → R2 **FAIL**: 3 FOMC dates 1 day late, CPI release times wrong (Oct 2025 CPI never released, shutdown), false CPI Aug-2026 gap, bucket parser bug, DST bug in BTC roll | fresh data-engineer fixing; adding unit tests + date cross-check vs closedTime; prereg amendments logged | draft: fed_decision, us_recession, bitcoin_monthly_price, us_cpi_inflation (tariffs rejected). Needs user approval after validation |
 | 3 Ingestion | **done** (user accepted 2026-10-03) | R1 PASS WITH ISSUES (no look-ahead in 1.32M rows; spot-checks exact) | majors: fid-60 holes, empty-200 marked covered |
 | 4 Alignment | **done** (2026-10-05) | R1 FAIL (3 majors) → R2 PASS (5 minors → step5.md) | fid-10 all pairs (A25), PM median age ~593s; A22 tolerance never fires (decision pending) |
-| 5 Dashboard | not started | | |
+| 5 Dashboard | in progress (plan 2026-10-05) | | built against a results contract; analysis slots say "Not run yet" until step 6 |
 | 6 Analysis | not started | | |
 | 7 Write-up | not started | | |
 
