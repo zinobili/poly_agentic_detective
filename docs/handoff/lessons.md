@@ -28,3 +28,4 @@ Every bug class an independent validator has caught so far. Builders self-check 
 - **Pre-registration changes are dated amendments,** never silent rewrites.
 - **Mutation-test the key guards** (clip, touch direction, DST, write-once). A test that survives removing its guard is useless.
 - **An empty API response is not proof of no data** when the market was trading. Confirm it with a second probe before marking the window covered.
+- **Check that a rule actually fires on real data,** not only on synthetic tests. A guard or exception that never triggers in production (e.g. A22 after dedup) makes its robustness check meaningless.
