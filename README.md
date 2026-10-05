@@ -41,6 +41,17 @@ python -m venv .venv
 No API keys are needed for the current data sources. Optional keys for future sources are listed in
 [`.env.example`](.env.example). Copy it to `.env`, which is git-ignored.
 
+## Run the pipeline and the dashboard
+
+```bash
+.venv/Scripts/python.exe -m poly_actor.ingest run        # fetch raw data into data/raw/
+.venv/Scripts/python.exe -m poly_actor.align run         # build hourly panels in data/clean/
+.venv/Scripts/streamlit.exe run src/poly_actor/dashboard/app.py   # opens on http://localhost:8501
+```
+
+Until the analysis step writes `data/clean/results/`, the dashboard shows the raw data and marks every
+analysis section "Not run yet".
+
 ## Tests and lint
 
 ```bash

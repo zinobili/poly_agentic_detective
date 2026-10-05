@@ -145,13 +145,6 @@ def _render_verdict(pair_id: str, res: PairResults | None, ticker: str) -> None:
                 st.markdown(f'<div class="tech">{_esc(technical)}</div>', unsafe_allow_html=True)
 
 
-def _chart_card(kicker: str, title: str, how: str, so_what: str) -> None:
-    st.caption(kicker)
-    st.subheader(title)
-    st.write(f"**How to read.** {how}")
-    st.write(f"**So what.** {so_what}")
-
-
 def _render_chart1(pair_id: str, res: PairResults | None, ticker: str) -> None:
     xc = text.xcorr_for(res, ticker)
     preview = text.is_preview(res)

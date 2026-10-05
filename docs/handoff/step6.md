@@ -15,3 +15,6 @@ Plan to be written at the start of step 6. Step 6 writes `data/clean/results/<pa
 - The picker state resets when the ticker set changes (harmless).
 - Design question: which tickers count as controls. Only `CONTROL_TICKERS` get the "(control)" label; SPY/XLF in the Fed pair do not.
 - Not yet looked at in a real browser: the sticky pair tabs and the scroll-on-card-click.
+
+## Crusader push review 2026-10-05 r2 minors (docs/reviews/push_2026-10-05_crusader_r2.md)
+Fix where step 6 touches the code: streamlit pinned twice in pyproject; `load_panel` has no corrupt-parquet handling; `app.py` re-reads every results JSON on each rerun (cache it); `_summary_lock` sleep not injectable/tested; load.py helper docstrings/units; loose dict annotations in align/cli.py; text.py is 473 lines (split); module-level `main()` in app.py.
