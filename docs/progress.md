@@ -1,7 +1,7 @@
 # Progress
 
 ## Resume here
-- **2026-10-06: Step 6 STARTED** on branch `step6-analysis`. Plan + DRAFT A27 (analysis settings) in docs/handoff/step6.md. WAITING ON USER: approve A27 before any return is examined. Then: record A27 in prereg → quant-researcher build → check.sh → validator (opus).
+- **2026-10-06: Step 6 STARTED** on branch `step6-analysis`. Plan + DRAFT A27 (analysis settings) in docs/handoff/step6.md. A27 FROZEN (f4f0acb) after blind quant review (3 blockers/10 majors adopted) + user decisions (CPI min 10, pair 4 'Descriptive only', ΔP main). Stage: quant-researcher build running. Then: record A27 in prereg → quant-researcher build → check.sh → validator (opus).
 - Updated 2026-10-05. On branch `wip/step4-alignment` (not pushed). Round-2 fix batch committed (fid-10 Fed+BTC, A25, 284 tests, check.sh PASS; Fed/BTC median age ~594s).
 - 2026-10-05 user: YES extend fid-10 to CPI + recession (handoff step4.md 'Round 2b'). Batch 2b DONE (8200c8c): 1,049 calls, 0 failures; median age 592-595s all 4 pairs; check.sh PASS. Validator r2 = PASS (0 blockers/majors, 5 minors → docs/handoff/step5.md; docs/reviews/step4_r2.md). Merged to master; crusader SHIP WITH FIXES (major = ruff format on review md, fixed; minors → step5.md); check.sh PASS. 2026-10-05 user: push OK; A22 RETIRED (A26; CLAUDE.md updated; code removal = step 5 task). Step 5 STARTED on branch `step5-dashboard`: plan written (docs/handoff/step5.md). 5a DONE (77cbbb8: A22 code removed, panels equal old strict, 280 tests, check PASS; not mutation-tested → validator). 5b DONE (1adfbd1: dashboard, 331 tests, headless start ok). Validator r1 = PASS w/ 1 major (ticker-keyed contract) + 7 minors (docs/reviews/step5_r1.md). Round-2 fixes DONE (44ef7a9, 343 tests, check PASS). Validator r2 = PASS (0 majors; minors → docs/handoff/step6.md). Merged to master; crusader SHIP WITH FIXES (major = false positive; README + dead code fixed; minors → step6.md); check PASS. PUSHED 2026-10-06 (2893952) → check.sh → validator.
 - Next: after 2b → check.sh → validator r2 (LAST round, opus) → merge to master → crusader → push (ask before push).
@@ -32,7 +32,7 @@
 | 3 Ingestion | **done** (user accepted 2026-10-03) | R1 PASS WITH ISSUES (no look-ahead in 1.32M rows; spot-checks exact) | majors: fid-60 holes, empty-200 marked covered |
 | 4 Alignment | **done** (2026-10-05) | R1 FAIL (3 majors) → R2 PASS (5 minors → step5.md) | fid-10 all pairs (A25), PM median age ~593s; A22 tolerance never fires (decision pending) |
 | 5 Dashboard | **done** (2026-10-05) | R1 PASS w/ 1 major (ticker-keyed contract) → R2 PASS | built against a results contract; analysis slots say "Not run yet" until step 6 |
-| 6 Analysis | planning (A27 draft, waiting on user) | | |
+| 6 Analysis | building (A27 frozen 2026-10-06) | | |
 | 7 Write-up | not started | | |
 
 ## Decision log
