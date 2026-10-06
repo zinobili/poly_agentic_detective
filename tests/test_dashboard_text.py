@@ -2,7 +2,16 @@
 
 from dashboard_helpers import granger_row, results, xcorr
 from poly_actor.dashboard import text
-from poly_actor.dashboard.contract import Confidence
+from poly_actor.dashboard.contract import CheckRow, Confidence, XCorr
+from poly_actor.dashboard.wording import PAIR_INFO
+
+PARAMS = {
+    "xcorr_lags": [-6, 6],
+    "band_level": 0.95,
+    "ci_level": 0.9,
+    "bh_q": 0.1,
+    "event_band_draws": 1000,
+}
 
 NONE_RUN = {p: None for p in ("fed_decision", "us_recession", "bitcoin_monthly_ladder")}
 
@@ -46,18 +55,15 @@ def test_peak_at_zero_means_same_hour():
     )
 
 
-def test_opposite_sign_neighbour_is_not_a_link():
+def test_lone_bar_outside_the_simultaneous_band_is_a_link():
+    """A27 rule 12: the band covers all lags at once, so no neighbour is required."""
+    xc = xcorr("TLT", p2=0.2)
+    assert text.xcorr_title("fed_decision", xc).startswith("Fed odds tend to move about 2 hours")
+
+
+def test_opposite_sign_neighbour_does_not_cancel_the_peak():
     xc = xcorr("TLT", p2=0.2, p3=-0.15)
-    assert "only isolated bars poke out" in text.xcorr_title("fed_decision", xc)
-
-
-def test_lone_bar_is_luck():
-    xc = xcorr("TLT", p2=0.2)  # neighbours at +1 and +3 stay inside the band
-    title = text.xcorr_title("fed_decision", xc)
-    assert title == (
-        "No clear timing link between Fed odds and TLT (long-term bonds): only isolated bars "
-        "poke out, which is likely luck"
-    )
+    assert text.classify_xcorr(xc).peak_lag == 2
 
 
 def test_all_inside_band_is_a_valid_result():
@@ -135,10 +141,10 @@ def test_confidence_meter_levels():
 def test_no_internal_names_in_reader_strings():
     blob = " ".join(
         [text.NOT_RUN_BANNER, text.NOT_RUN_HEADLINE, text.NULL_RESULT, text.FOOTER]
-        + [t for g in text.GLOSSARY for t in g]
-        + [info.question for info in text._PAIR_INFO.values()]
+        + [t for g in text.glossary(PARAMS) for t in g]
+        + [info.question for info in PAIR_INFO.values()]
     )
-    for banned in (*text._PAIR_INFO, "pairs.yaml", "python -m", "step 6"):
+    for banned in (*PAIR_INFO, "pairs.yaml", "python -m", "step 6"):
         assert banned not in blob
 
 
@@ -159,3 +165,77 @@ def test_per_ticker_finding_and_missing_ticker():
 def test_headline_does_not_claim_a_finding_when_every_verdict_is_too_early():
     res = {"a": results(verdict="Too early to tell"), "b": results(verdict="Too early to tell")}
     assert text.headline(res) == "Too early to tell for every pair so far"
+
+
+# ---------------------------------------------------------------- step 6 contract additions
+
+
+def test_glossary_reads_its_numbers_from_the_results():
+    terms = {t: (plain, tech) for t, plain, tech in text.glossary(PARAMS)}
+    assert "from 6 hours one way to 6 hours the other" in terms["Who moves first"][0]
+    assert terms["Noise zone"][1] == "simultaneous 95% band from session-shifted data"
+    assert terms["Shaded range"][1].startswith("90% confidence interval")
+    assert "q = 0.1" in terms["Many-pairs correction"][1]
+
+
+def test_glossary_without_results_shows_no_numbers():
+    blob = " ".join(t for g in text.glossary({}) for t in g)
+    for parameter in ("hours one way", "%", "q =", "draws", "lags -"):
+        assert parameter not in blob
+
+
+def test_headline_mix_of_undecided_and_no_extra_information_does_not_overclaim():
+    res = {
+        "a": results(verdict="Too early to tell"),
+        "b": results(verdict="No extra information"),
+        "c": results(verdict="Descriptive only"),
+    }
+    assert text.headline(res) == (
+        "So far no pair shows Polymarket odds moving ahead of stocks; 2 of 3 are still "
+        "undecided or descriptive only"
+    )
+    assert text.tally(res) == "1 no head start, 1 needs data, 1 descriptive"
+
+
+def test_headline_all_decided_nulls():
+    res = {"a": results(verdict="No head start"), "b": results(verdict="Moves at the same time")}
+    assert text.headline(res).startswith("So far, Polymarket odds have not moved ahead")
+
+
+def test_btc_title_is_read_from_the_spot_adjusted_panel():
+    raw = xcorr("IBIT", p0=0.5)  # raw: same-hour co-movement with Bitcoin itself
+    adjusted = xcorr("IBIT")  # nothing left after taking out Bitcoin's own price
+    xc = XCorr(raw.ticker, raw.lags, raw.r, raw.band, adjusted)
+    assert text.xcorr_title("bitcoin_monthly_ladder", xc).startswith("No clear timing link")
+
+
+def test_chart1_states():
+    assert text.chart1_state(None, "TLT") == "not_run"
+    plan = results("us_cpi_inflation", xcorr_not_in_plan=True, verdict="Too early to tell")
+    assert text.chart1_state(plan, "TLT") == "not_in_plan"
+    fed = results(xcorr={"TLT": xcorr("TLT")}, verdict="No head start")
+    assert text.chart1_state(fed, "TLT") == "chart"
+    assert text.chart1_state(fed, "SPY") == "not_computed"
+
+
+def test_finding_without_a_chart1_uses_the_verdict():
+    res = results("us_cpi_inflation", xcorr_not_in_plan=True, verdict="Too early to tell")
+    assert text.finding("us_cpi_inflation", res, "TLT") == (
+        "Too early to tell whether inflation odds move before TLT (long-term bonds)"
+    )
+    pre = results(
+        "us_recession",
+        verdict="Descriptive only",
+        confidence=Confidence("Not enough data", "x"),
+    )
+    assert text.finding("us_recession", pre, "IWM-SPY").startswith("Preview: A description")
+
+
+def test_opposite_sign_status_line():
+    row = CheckRow("Primary test", "Failed (opposite sign)", "Moves in the expected direction", "")
+    assert text.check_line(row) == "✗ Failed (opposite sign): Moves in the expected direction"
+
+
+def test_stocks_first_note_only_when_flagged():
+    assert text.stocks_first_note(results(stocks_first=True)).startswith("Exploratory")
+    assert text.stocks_first_note(results(stocks_first=False)) is None

@@ -19,6 +19,7 @@ dependencies = [
     "pyyaml>=6.0",
     "exchange_calendars>=4.5",
     "tzdata>=2024.1",  # zoneinfo on Windows has no system tz database
+    "scipy>=1.13",  # t/normal distributions, rank tests (step 6 analysis)
 ]
 
 [project.optional-dependencies]
@@ -26,7 +27,7 @@ dashboard = [
     "streamlit>=1.40,<2",
 ]
 dev = [
-    "streamlit>=1.40,<2",
+    "poly_actor[dashboard]",
     "pytest>=8",
     "ruff>=0.6",
     "jupyterlab>=4",

@@ -24,7 +24,7 @@ FULL = {
     "xcorr": {"TLT": {"lags": list(LAGS), "r": [0.0] * 25, "band": 0.05}},
     "event_study": {
         "TLT": {
-            "hours": [-1, 0, 1],
+            "steps": ["-1", "0", "+1"],
             "mean": [0.0, 0.1, 0.2],
             "ci_low": [-0.1, 0.0, 0.1],
             "ci_high": [0.1, 0.2, 0.3],
@@ -139,3 +139,10 @@ def test_bad_entries_are_logged(caplog):
     with caplog.at_level(logging.WARNING):
         parse_results({"pair_id": "p", "xcorr": {"TLT": {"lags": [0], "r": [float("nan")]}}})
     assert "invalid xcorr entry for TLT" in caplog.text
+
+
+def test_corrupt_panel_is_none_and_names_the_path(tmp_path, caplog):
+    (tmp_path / "panel_fed_decision.parquet").write_bytes(b"not a parquet file")
+    with caplog.at_level(logging.WARNING):
+        assert load_panel(tmp_path, "fed_decision") is None
+    assert "panel_fed_decision.parquet" in caplog.text

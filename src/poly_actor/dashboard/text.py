@@ -1,14 +1,34 @@
-"""All reader-facing wording, as pure functions of the results. No Streamlit, no I/O.
+"""Reader-facing sentences, as pure functions of the results. No Streamlit, no I/O.
 
-Rule: a lay reader never sees pair ids, config file names, commands or step numbers.
-Nothing here invents a number: with no results every function says "not run yet".
+Static wording lives in `wording.py`. Nothing here invents a number: parameters shown to the
+reader (lags, bands, interval levels) are read from the results file, and with no results
+every function says "not run yet".
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
+from .chart_text import (  # re-exported: the app and tests read them via `text`
+    XcorrShape,
+    classify_xcorr,
+    event_study_expert,
+    event_study_how_to_read,
+    event_study_so_what,
+    event_study_title,
+    fmt_time,
+    label_panel,
+    pair_info,
+    preview_title,
+    stocks_first_note,
+    ticker_label,
+    xcorr_expert,
+    xcorr_how_to_read,
+    xcorr_so_what,
+    xcorr_title,
+)
 from .contract import (
     CONFIDENCE_LEVELS,
     CheckRow,
@@ -17,188 +37,148 @@ from .contract import (
     PairResults,
     XCorr,
 )
-
-NOT_RUN = "Not run yet"
-NOT_RUN_BANNER = "Analysis not run yet: only the raw data below is real"
-NOT_RUN_HEADLINE = "We haven't run the tests yet"
-NOT_RUN_REASON = "Tests not run"
-NOTHING_TO_CONCLUDE = "Nothing to conclude until the tests have run."
-
-
-@dataclass(frozen=True)
-class PairInfo:
-    name: str
-    short: str
-    question: str
-    odds: str  # start of a sentence
-    odds_mid: str  # inside a sentence
-
-
-_PAIR_INFO = {
-    "fed_decision": PairInfo(
-        "Fed rate decision",
-        "Fed",
-        "Do bets on the next Fed rate move run ahead of bond and bank prices?",
-        "Fed odds",
-        "Fed odds",
-    ),
-    "us_recession": PairInfo(
-        "US recession",
-        "Recession",
-        "Does the crowd's recession chance move before stocks and bonds do?",
-        "Recession odds",
-        "recession odds",
-    ),
-    "bitcoin_monthly_ladder": PairInfo(
-        "Bitcoin price ladder",
-        "Bitcoin",
-        "Do bets on where Bitcoin will trade this month tell us anything "
-        "Bitcoin's own price doesn't?",
-        "Bitcoin price odds",
-        "Bitcoin price odds",
-    ),
-    "us_cpi_inflation": PairInfo(
-        "US inflation (CPI)",
-        "Inflation",
-        "Do bets on the next inflation report move bonds and tech stocks before the release?",
-        "Inflation odds",
-        "inflation odds",
-    ),
-}
-
-SIGNAL_LABELS = {
-    "fed_decision": "Expected Fed rate change (pts)",
-    "us_recession": "Chance of US recession (%)",
-    "bitcoin_monthly_ladder": "Crowd-implied Bitcoin price ($k)",
-    "us_cpi_inflation": "Implied inflation, year on year (%)",
-}
-
-TICKER_PLAIN = {
-    "TLT": "long-term bonds",
-    "SPY": "S&P 500",
-    "XLF": "banks",
-    "XLU": "utilities",
-    "IWM": "small companies",
-    "IWM-SPY": "small vs large companies",
-    "COIN": "Coinbase",
-    "MSTR": "MicroStrategy",
-    "IBIT": "Bitcoin ETF",
-    "BTC-USD": "Bitcoin itself",
-    "QQQ": "Nasdaq 100",
-}
-CONTROL_TICKERS = frozenset({"XLU"})
-
-CHECKLIST_ROWS = (
-    "Odds move first",
-    "Odds help predict prices beyond their own past",
-    "Link vanishes when timing is scrambled",
-    "Holds after the many-pairs correction",
-    "Enough cases to be sure",
+from .wording import (
+    CHECKLIST_ROWS,
+    CONTROL_TICKERS,
+    COUNTS,
+    DOES_NOT_COUNT,
+    FOOTER,
+    NOT_COMPUTED_NOTE,
+    NOT_IN_PLAN,
+    NOT_IN_PLAN_NOTE,
+    NOT_RUN,
+    NOT_RUN_BANNER,
+    NOT_RUN_HEADLINE,
+    NOT_RUN_REASON,
+    NOTHING_TO_CONCLUDE,
+    NULL_RESULT,
+    SIGNAL_LABELS,
+    STATUS_ICON,
+    TICKER_PLAIN,
+    VERDICT_SENTENCE,
 )
-STATUS_ICON = {"Passed": "✓", "Failed": "✗", "Weak": "!", "Not needed": "–", "Not run": "·"}
+
+__all__ = [
+    "XcorrShape",
+    "classify_xcorr",
+    "event_study_expert",
+    "event_study_how_to_read",
+    "event_study_so_what",
+    "event_study_title",
+    "fmt_time",
+    "label_panel",
+    "pair_info",
+    "stocks_first_note",
+    "ticker_label",
+    "xcorr_expert",
+    "xcorr_how_to_read",
+    "xcorr_so_what",
+    "xcorr_title",
+    "COUNTS",
+    "DOES_NOT_COUNT",
+    "FOOTER",
+    "NOT_IN_PLAN",
+    "NOT_IN_PLAN_NOTE",
+    "NOT_RUN",
+    "NOT_RUN_BANNER",
+    "NOT_RUN_HEADLINE",
+    "NULL_RESULT",
+    "SIGNAL_LABELS",
+]
 
 CONFIDENCE_FILLED = dict(zip(CONFIDENCE_LEVELS, (0, 1, 2, 3), strict=True))
 
-GLOSSARY = (
-    (
-        "Odds",
-        "Polymarket's price for a yes/no outcome, read as a crowd-estimated probability.",
-        "analysis uses hourly changes in log-odds",
-    ),
-    (
-        "Who moves first",
-        "Comparing the two series at time gaps from 12 hours one way to 12 hours the other.",
-        "lead-lag cross-correlation, lags -12 to +12 h",
-    ),
-    (
-        "Link strength",
-        "From -1 to 1. Zero means no link. In markets, 0.1 to 0.2 is already notable.",
-        "Pearson correlation",
-    ),
-    ("Noise zone", "The range that pure chance would produce.", "95% band under no relationship"),
-    (
-        "Big odds jump",
-        "An hour in which the odds moved far more than usual.",
-        "hourly change beyond 2 standard deviations",
-    ),
-    (
-        "Shaded range",
-        "Where the true average plausibly lies. If it includes zero, the effect could be chance.",
-        "95% confidence interval",
-    ),
-    (
-        "Helps predict beyond its own past",
-        "Do the odds add anything once we know the stock's recent moves?",
-        "Granger causality test",
-    ),
-    (
-        "Scrambled-timing test",
-        "Rerun with shuffled times. A real signal should vanish.",
-        "placebo test",
-    ),
-    (
-        "Many-pairs correction",
-        "Raises the bar because we test many pairs at once.",
-        "Benjamini-Hochberg FDR adjustment",
-    ),
-    (
-        "Control asset",
-        "A stock that should have no link, used to check that the method isn't inventing patterns.",
-        "negative control",
-    ),
-)
-
-COUNTS = (
-    "The odds change **before** the stock, again and again, not just once.",
-    "Knowing the odds helps predict the stock **even after** we account for the stock's own "
-    "recent moves.",
-    "The pattern **disappears** when we deliberately scramble the timing. If it doesn't, the "
-    "method is fooling us.",
-    "It holds up even though we tested **many pairs**. If you test enough things, one of them "
-    "will look good by luck.",
-)
-DOES_NOT_COUNT = (
-    "Two lines that look alike on a chart.",
-    "One dramatic day.",
-    "Both moving in the same hour. That just means both reacted to the same news.",
-    "A link that shows up in one hand-picked stock but not in the others.",
-)
-NULL_RESULT = (
-    "If the odds only mirror what stocks are already doing, that is worth knowing. It means "
-    "you can ignore them for timing and skip the effort. Proving there's nothing there is half "
-    "of what this lab is for."
-)
-FOOTER = (
-    "Hourly data, all times UTC. Research only: this lab places no trades and is not "
-    "investment advice."
-)
-
 Results = dict[str, PairResults | None]
-
-
-def pair_info(pair_id: str) -> PairInfo:
-    """Wording for a pair; an unknown id falls back to a readable name, never the raw id."""
-    known = _PAIR_INFO.get(pair_id)
-    if known:
-        return known
-    name = pair_id.replace("_", " ").capitalize()
-    return PairInfo(name, name, f"Does {name.lower()} move before related stocks?", name, name)
 
 
 def ticker_plain(ticker: str) -> str:
     return TICKER_PLAIN.get(ticker, "")
 
 
-def ticker_label(ticker: str) -> str:
-    """'TLT (long-term bonds)' for sentences."""
-    plain = ticker_plain(ticker)
-    return f"{ticker} ({plain})" if plain else ticker
-
-
 def ticker_chip(ticker: str) -> str:
     """'TLT long-term bonds' / 'XLU utilities (control)' for the chips row."""
     parts = [ticker, ticker_plain(ticker), "(control)" if ticker in CONTROL_TICKERS else ""]
     return " ".join(p for p in parts if p)
+
+
+# ---------------------------------------------------------------- glossary
+
+
+def params_of(results: Results) -> dict[str, Any]:
+    """Analysis parameters as written by the analysis (first pair that has them)."""
+    for r in results.values():
+        if r is not None and r.params:
+            return r.params
+    return {}
+
+
+def glossary(params: dict[str, Any]) -> tuple[tuple[str, str, str], ...]:
+    """(term, plain words, technical term). Numbers come from the results, never from here."""
+    lags = params.get("xcorr_lags")
+    band = params.get("band_level")
+    ci = params.get("ci_level")
+    q = params.get("bh_q")
+    draws = params.get("event_band_draws")
+    gaps = (
+        f"Comparing the two series at time gaps from {abs(lags[0])} hours one way to {lags[1]} "
+        "hours the other."
+        if lags
+        else "Comparing the two series at several time gaps."
+    )
+    return (
+        (
+            "Odds",
+            "Polymarket's price for a yes/no outcome, read as a crowd-estimated probability.",
+            "analysis uses changes in the Polymarket signal, never levels",
+        ),
+        (
+            "Who moves first",
+            gaps,
+            f"lead-lag cross-correlation, lags {lags[0]} to +{lags[1]} session bars"
+            if lags
+            else "lead-lag cross-correlation",
+        ),
+        ("Link strength", "From -1 to 1. Zero means no link.", "Pearson correlation"),
+        (
+            "Noise zone",
+            "The range that pure chance would produce at any of the time gaps.",
+            f"simultaneous {band:.0%} band from session-shifted data"
+            if band
+            else "simultaneous band from session-shifted data",
+        ),
+        (
+            "Shaded range",
+            "Where the true average plausibly lies. If it includes zero, the effect could be "
+            "chance.",
+            f"{ci:.0%} confidence interval (BCa bootstrap)" if ci else "confidence interval",
+        ),
+        (
+            "Ordinary-day band",
+            "What the same chart looks like on randomly picked days without the event.",
+            f"random-date band, {draws} draws" if draws else "random-date band",
+        ),
+        (
+            "Beyond its own price",
+            "Do the odds add anything once we know what Bitcoin itself just did?",
+            "regression with BTC-USD returns as controls",
+        ),
+        (
+            "Scrambled-timing test",
+            "Rerun with the timing shuffled. A real signal should vanish.",
+            "placebo test",
+        ),
+        (
+            "Many-pairs correction",
+            "Raises the bar because we test several pairs at once.",
+            f"Benjamini-Hochberg false discovery rate, q = {q}" if q else "Benjamini-Hochberg",
+        ),
+        (
+            "Control asset",
+            "A stock that should have no link, used to check that the method isn't inventing "
+            "patterns.",
+            "negative control",
+        ),
+    )
 
 
 # ---------------------------------------------------------------- banner, headline, tally
@@ -217,15 +197,20 @@ def banner(results: Results) -> str | None:
     )
 
 
+_SHORT = {
+    "Polymarket moves first": "leads",
+    "Moves at the same time": "no head start",
+    "No head start": "no head start",
+    "No extra information": "no head start",
+    "Too early to tell": "needs data",
+    "Descriptive only": "descriptive",
+}
+
+
 def _short_verdict(r: PairResults | None) -> str:
     if r is None or r.verdict is None:
         return "needs data"
-    return {
-        "Polymarket moves first": "leads",
-        "Moves at the same time": "no head start",
-        "No extra information": "no head start",
-        "Too early to tell": "needs data",
-    }[r.verdict]
+    return _SHORT[r.verdict]
 
 
 def tally(results: Results) -> str:
@@ -236,172 +221,31 @@ def tally(results: Results) -> str:
     for r in results.values():
         key = _short_verdict(r)
         counts[key] = counts.get(key, 0) + 1
-    order = ("leads", "no head start", "needs data")
+    order = ("leads", "no head start", "needs data", "descriptive")
     return ", ".join(f"{counts[k]} {k}" for k in order if k in counts)
 
 
 def headline(results: Results) -> str:
-    """One sentence generated from the per-pair verdicts."""
-    if not any(r is not None and r.verdict for r in results.values()):
+    """One sentence generated from the per-pair verdicts; never claims more than they do."""
+    verdicts = [r.verdict for r in results.values() if r is not None and r.verdict]
+    if not verdicts:
         return NOT_RUN_HEADLINE
-    if all(r is None or r.verdict == "Too early to tell" for r in results.values()):
+    n = len(results)
+    leads = verdicts.count("Polymarket moves first")
+    if leads:
+        return f"Polymarket odds moved ahead of stocks in {leads} of {n} pairs we tested"
+    undecided = n - sum(_SHORT[v] == "no head start" for v in verdicts)
+    if undecided == n:
         return "Too early to tell for every pair so far"
-    leads = sum(1 for r in results.values() if r and r.verdict == "Polymarket moves first")
-    if leads == 0:
-        return "So far, Polymarket odds have not moved ahead of stocks in any pair we tested"
-    return f"Polymarket odds moved ahead of stocks in {leads} of {len(results)} pairs we tested"
-
-
-# ---------------------------------------------------------------- chart 1 (who moves first)
-
-
-@dataclass(frozen=True)
-class XcorrShape:
-    kind: str  # lead | lag | same | isolated | none
-    peak_lag: int | None
-
-
-def classify_xcorr(xc: XCorr) -> XcorrShape:
-    """A single outside bar is not a link: the peak needs an adjacent same-sign outside bar."""
-    outside = [abs(r) > xc.band for r in xc.r]
-    if not any(outside):
-        return XcorrShape("none", None)
-    peak = min(
-        (i for i, o in enumerate(outside) if o),
-        key=lambda i: (-abs(xc.r[i]), abs(xc.lags[i])),
-    )
-    neighbours = (j for j in (peak - 1, peak + 1) if 0 <= j < len(xc.r))
-    if not any(outside[j] and xc.r[j] * xc.r[peak] > 0 for j in neighbours):
-        return XcorrShape("isolated", xc.lags[peak])
-    lag = xc.lags[peak]
-    return XcorrShape("same" if lag == 0 else "lead" if lag > 0 else "lag", lag)
-
-
-def _hours(n: int) -> str:
-    return f"{abs(n)} hour" if abs(n) == 1 else f"{abs(n)} hours"
-
-
-def _preview(title: str, preview: bool) -> str:
-    return f"Preview: {title}" if preview else title
-
-
-def xcorr_title(pair_id: str, xc: XCorr | None, preview: bool = False) -> str:
-    """Action title for chart 1, computed from the results."""
-    if xc is None:
-        return NOT_RUN
-    info, stock = pair_info(pair_id), ticker_label(xc.ticker)
-    shape = classify_xcorr(xc)
-    if shape.kind == "lead":
-        title = f"{info.odds} tend to move about {_hours(shape.peak_lag)} before {stock}"
-    elif shape.kind == "lag":
-        title = f"{stock} tends to move about {_hours(shape.peak_lag)} before {info.odds_mid}"
-    elif shape.kind == "same":
-        title = f"{info.odds} and {stock} move in the same hour, so neither gets a head start"
-    elif shape.kind == "isolated":
-        title = (
-            f"No clear timing link between {info.odds_mid} and {stock}: only isolated bars "
-            "poke out, which is likely luck"
-        )
-    else:
-        title = (
-            f"No clear timing link between {info.odds_mid} and {stock}: every bar sits in the "
-            "noise zone"
-        )
-    return _preview(title, preview)
-
-
-def xcorr_so_what(xc: XCorr | None) -> str:
-    if xc is None:
-        return NOTHING_TO_CONCLUDE
-    kind = classify_xcorr(xc).kind
-    if kind == "lead":
+    if undecided:
         return (
-            "This is the kind of early signal we're looking for, but it only counts if the "
-            "checklist above also holds up."
+            "So far no pair shows Polymarket odds moving ahead of stocks; "
+            f"{undecided} of {n} are still undecided or descriptive only"
         )
-    if kind == "lag":
-        return "The stock moves first, so the odds are following the market, not leading it."
-    if kind == "same":
-        return (
-            "The odds work like a mirror, not a crystal ball. They show what the market is "
-            "already pricing in, so they give no early warning."
-        )
-    note = (
-        "That's a valid result, not a failure. It means the odds gave no timing edge over "
-        "this stock in this data."
-    )
-    if xc.ticker in CONTROL_TICKERS:
-        note += (
-            " This is a control asset, so no link is good news: the method isn't inventing "
-            "patterns."
-        )
-    return note
-
-
-def xcorr_how_to_read() -> str:
-    return (
-        "Each bar is how closely the odds and the stock move together at a given time gap. "
-        "Bars to the right mean the odds moved first. Grey bars are inside the noise zone and "
-        "mean nothing, and a lone blue bar is usually luck. A bar below the line still counts "
-        "as a link: it means the two move in opposite directions."
-    )
-
-
-def xcorr_expert(xc: XCorr) -> str:
-    return (
-        f"Correlation of hourly changes, lags {xc.lags[0]:+d} to {xc.lags[-1]:+d} h "
-        f"(positive lag: odds first). Noise zone: +/-{xc.band:.3f}."
-    )
-
-
-# ---------------------------------------------------------------- chart 2 (event study)
-
-
-def event_study_title(pair_id: str, es: EventStudy | None, preview: bool = False) -> str:
-    if es is None:
-        return NOT_RUN
-    stock = ticker_label(es.ticker)
-    moved = any(
-        h > 0 and (lo > 0 or hi < 0)
-        for h, lo, hi in zip(es.hours, es.ci_low, es.ci_high, strict=True)
-    )
-    if moved:
-        title = f"After a big odds jump, {stock} shows a move that is unlikely to be chance"
-    else:
-        title = f"After a big odds jump, {stock} shows no move we can tell apart from chance"
-    return _preview(title, preview)
-
-
-def event_study_how_to_read() -> str:
-    return (
-        "Time zero is an hour when the odds jumped. The line is the stock's average move "
-        "before and after. The shaded range is where the true average plausibly lies. If it "
-        "includes zero, the move could be chance."
-    )
-
-
-def event_study_so_what(es: EventStudy | None) -> str:
-    if es is None:
-        return NOTHING_TO_CONCLUDE
-    return "Use this to see whether the stock reacts after the odds do, and for how long."
-
-
-def event_study_expert(es: EventStudy, n_events: int | None) -> str:
-    count = n_events if n_events is not None else len(es.event_times)
-    span = ""
-    if es.event_times:
-        span = f" (first {fmt_time(min(es.event_times))}, last {fmt_time(max(es.event_times))})"
-    return (
-        f"Mean {es.ticker} move in percent, hours {es.hours[0]:+d} to {es.hours[-1]:+d} around "
-        f"each event, with a 95% interval. Events: {count}{span}."
-    )
+    return "So far, Polymarket odds have not moved ahead of stocks in any pair we tested"
 
 
 # ---------------------------------------------------------------- verdict panel, checklist
-
-
-def fmt_time(t: datetime) -> str:
-    return t.strftime("%Y-%m-%d %H:%M UTC")
 
 
 def check_line(row: CheckRow) -> str:
@@ -450,18 +294,55 @@ def event_study_for(results: PairResults | None, ticker: str) -> EventStudy | No
     return results.event_study.get(ticker) if results and results.event_study else None
 
 
+def verdict_sentence(pair_id: str, results: PairResults, ticker: str) -> str:
+    info = pair_info(pair_id)
+    template = VERDICT_SENTENCE[results.verdict]
+    return template.format(odds=info.odds, odds_mid=info.odds_mid, stock=ticker_label(ticker))
+
+
 def finding(pair_id: str, results: PairResults | None, ticker: str) -> str:
     """One-sentence finding for the scorecard and the verdict panel title."""
+    if results is None or results.verdict is None:
+        xc = xcorr_for(results, ticker)
+        return NOT_RUN if xc is None else xcorr_title(pair_id, xc, is_preview(results))
     xc = xcorr_for(results, ticker)
-    return NOT_RUN if xc is None else xcorr_title(pair_id, xc, is_preview(results))
+    if xc is not None:
+        return xcorr_title(pair_id, xc, is_preview(results))
+    return preview_title(verdict_sentence(pair_id, results, ticker), is_preview(results))
 
 
 def so_what(results: PairResults | None, ticker: str) -> str:
-    return xcorr_so_what(xcorr_for(results, ticker))
+    xc = xcorr_for(results, ticker)
+    if xc is not None:
+        return xcorr_so_what(xc)
+    if results is not None and results.verdict_reason:
+        return results.verdict_reason
+    return NOTHING_TO_CONCLUDE
+
+
+def chart1_state(results: PairResults | None, ticker: str) -> str:
+    """'chart' | 'not_in_plan' | 'not_computed' | 'not_run'."""
+    if results is None:
+        return "not_run"
+    if results.xcorr_not_in_plan:
+        return "not_in_plan"
+    if xcorr_for(results, ticker) is not None:
+        return "chart"
+    return "not_computed" if results.verdict else "not_run"
+
+
+def chart2_state(results: PairResults | None, ticker: str) -> str:
+    if event_study_for(results, ticker) is not None:
+        return "chart"
+    return "not_computed" if results is not None and results.verdict else "not_run"
 
 
 def not_run_chart_note() -> str:
     return "This chart appears once the tests have run. No numbers are shown until then."
+
+
+def not_computed_note() -> str:
+    return NOT_COMPUTED_NOTE
 
 
 def coverage_line(first: datetime, last: datetime, both: int, age_s: float | None) -> str:

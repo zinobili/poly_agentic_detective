@@ -12,9 +12,10 @@ import logging
 import os
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -23,6 +24,10 @@ from poly_actor.config import CLEAN_DIR
 
 SUMMARY_NAME = "align_summary.json"
 LOCK_TIMEOUT_S = 30.0
+LOCK_POLL_S = 0.2
+
+# One pair's summary: flag rates, counts and nested distributions (see `report.summarize`).
+PairSummary = dict[str, Any]
 
 
 def _summary_path(clean_dir: Path) -> Path:
@@ -45,7 +50,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 2
     clean_dir = Path(args.clean_dir)
     con = pipeline.connect_raw()
-    summaries: dict[str, dict] = {}
+    summaries: dict[str, PairSummary] = {}
     for pair_id in chosen:
         t0 = time.perf_counter()
         panel, diag = pipeline.run_pair(cfg, pair_id, con, clean_dir)
@@ -57,8 +62,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 @contextmanager
-def _summary_lock(clean_dir: Path, timeout_s: float = LOCK_TIMEOUT_S) -> Iterator[None]:
-    """Exclusive lock file so two concurrent runs cannot lose each other's summary entries."""
+def _summary_lock(
+    clean_dir: Path,
+    timeout_s: float = LOCK_TIMEOUT_S,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Iterator[None]:
+    """Exclusive lock file so two concurrent runs cannot lose each other's summary entries.
+
+    `sleep` is injectable so tests can check the waiting loop without real delays."""
     clean_dir.mkdir(parents=True, exist_ok=True)
     lock = clean_dir / (SUMMARY_NAME + ".lock")
     deadline = time.monotonic() + timeout_s
@@ -69,7 +80,7 @@ def _summary_lock(clean_dir: Path, timeout_s: float = LOCK_TIMEOUT_S) -> Iterato
         except FileExistsError:
             if time.monotonic() > deadline:
                 raise TimeoutError(f"{lock} held over {timeout_s:.0f}s; remove if stale") from None
-            time.sleep(0.2)
+            sleep(LOCK_POLL_S)
     try:
         yield
     finally:
@@ -77,7 +88,7 @@ def _summary_lock(clean_dir: Path, timeout_s: float = LOCK_TIMEOUT_S) -> Iterato
         lock.unlink(missing_ok=True)
 
 
-def _merge_summary(clean_dir: Path, new: dict[str, dict]) -> None:
+def _merge_summary(clean_dir: Path, new: dict[str, PairSummary]) -> None:
     """Read-modify-write of the summary under the lock."""
     with _summary_lock(clean_dir):
         existing = _read_summary(clean_dir)
@@ -85,7 +96,7 @@ def _merge_summary(clean_dir: Path, new: dict[str, dict]) -> None:
         _write_summary(clean_dir, existing)
 
 
-def _write_summary(clean_dir: Path, summary: dict) -> None:
+def _write_summary(clean_dir: Path, summary: dict[str, PairSummary]) -> None:
     """Temp file plus rename, like the panels: a crash never leaves a half-written summary."""
     path = _summary_path(clean_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,7 +105,7 @@ def _write_summary(clean_dir: Path, summary: dict) -> None:
     os.replace(tmp, path)
 
 
-def _read_summary(clean_dir: Path) -> dict:
+def _read_summary(clean_dir: Path) -> dict[str, PairSummary]:
     path = _summary_path(clean_dir)
     if not path.exists():
         return {}
@@ -107,7 +118,7 @@ def _read_summary(clean_dir: Path) -> dict:
 def cmd_report(args: argparse.Namespace) -> int:
     """Print panel sizes and flag rates from the existing panels."""
     clean_dir = Path(args.clean_dir)
-    summaries: dict[str, dict] = {}
+    summaries: dict[str, PairSummary] = {}
     for path in sorted(clean_dir.glob("panel_*.parquet")):
         pair_id = path.stem.removeprefix("panel_")
         summaries[pair_id] = report.summarize(pd.read_parquet(path))

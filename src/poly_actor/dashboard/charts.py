@@ -13,8 +13,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .contract import EventStudy, XCorr
-from .text import SIGNAL_LABELS, ticker_label
+from .contract import GAP_STEP, EventStudy, XCorr
+from .text import ticker_label
+from .wording import ROUND_THE_CLOCK, SIGNAL_LABELS
 
 MAX_GAP = pd.Timedelta(hours=6)
 POLY_COLOR = "#2563eb"
@@ -57,9 +58,14 @@ def stock_index_series(panel: pd.DataFrame, ticker: str) -> pd.DataFrame:
     """Stock price index (100 at the first bar) built from the panel's log returns.
 
     Each session bar's return is added at the bar end; the overnight gap is added on the
-    opening bar so the level stays continuous across nights.
+    opening bar so the level stays continuous across nights. A round-the-clock asset (BTC-USD)
+    uses every row, so its line does not break overnight.
     """
     ret = panel[f"ret_{ticker}"]
+    if ticker in ROUND_THE_CLOCK:
+        rows = ret.notna()
+        level = 100.0 * np.exp(ret[rows].cumsum())
+        return pd.DataFrame({"x": panel.loc[rows, "ts_end"], "y": level})
     gap_col = f"overnight_gap_{ticker}"
     gap = (
         panel[gap_col].fillna(0.0) if gap_col in panel.columns else pd.Series(0.0, index=ret.index)
@@ -103,26 +109,61 @@ def _xy(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
 
 
 def xcorr_figure(xc: XCorr) -> go.Figure:
-    """Chart 1: one bar per lag; bars inside the noise zone are grey."""
+    """Chart 1: one bar per lag; bars inside the simultaneous noise zone are grey."""
     colors = [POLY_COLOR if abs(r) > xc.band else GREY for r in xc.r]
     fig = go.Figure(
         go.Bar(x=list(xc.lags), y=list(xc.r), marker_color=colors, name="Link strength")
     )
     fig.add_hrect(y0=-xc.band, y1=xc.band, fillcolor=GREY, opacity=0.25, line_width=0)
-    fig.update_xaxes(title_text="Time gap in hours (positive: odds moved first)", dtick=2)
+    fig.update_xaxes(title_text="Time gap in hours (positive: odds moved first)", dtick=1)
     fig.update_yaxes(title_text="Link strength (-1 to 1)")
     fig.update_layout(height=340, margin={"t": 20, "r": 20}, showlegend=False)
     return fig
 
 
+PATH_COLOR = "rgba(100,116,139,0.25)"
+COMPARE_COLOR = "#b45309"
+
+
 def event_study_figure(es: EventStudy) -> go.Figure:
-    """Chart 2: mean stock move around each odds jump, with the shaded 95% range."""
-    hours = list(es.hours)
+    """Chart 2: mean move per event-time step with its interval, the individual events, the
+    ordinary-day band and marked opening-gap steps. Steps are categories, so a 'gap' step sits
+    between two bars."""
+    x = list(es.steps)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hours, y=list(es.ci_high), line={"width": 0}, showlegend=False))
+    if es.band_low is not None:
+        fig.add_trace(go.Scatter(x=x, y=list(es.band_high), line={"width": 0}, showlegend=False))
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=list(es.band_low),
+                fill="tonexty",
+                fillcolor="rgba(156,163,175,0.25)",
+                line={"width": 0},
+                name="Ordinary days",
+            )
+        )
+    for i, path in enumerate(es.paths):
+        marks = es.gap_marks[i] if i < len(es.gap_marks) else ()
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=list(path),
+                mode="lines+markers" if marks else "lines",
+                line={"color": PATH_COLOR, "width": 1},
+                marker={
+                    "size": [8 if j in marks else 0 for j in range(len(x))],
+                    "symbol": "diamond",
+                    "color": PATH_COLOR,
+                },
+                showlegend=i == 0,
+                name="Each event",
+            )
+        )
+    fig.add_trace(go.Scatter(x=x, y=list(es.ci_high), line={"width": 0}, showlegend=False))
     fig.add_trace(
         go.Scatter(
-            x=hours,
+            x=x,
             y=list(es.ci_low),
             fill="tonexty",
             fillcolor="rgba(37,99,235,0.18)",
@@ -131,10 +172,34 @@ def event_study_figure(es: EventStudy) -> go.Figure:
         )
     )
     fig.add_trace(
-        go.Scatter(x=hours, y=list(es.mean), name="Average move", line={"color": POLY_COLOR})
+        go.Scatter(
+            x=x, y=list(es.mean), name=es.label or "Average move", line={"color": POLY_COLOR}
+        )
     )
+    if es.compare is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=list(es.compare.mean),
+                name=es.compare.label,
+                line={"color": COMPARE_COLOR, "dash": "dash"},
+                error_y={
+                    "type": "data",
+                    "symmetric": False,
+                    "array": [
+                        h - m for h, m in zip(es.compare.ci_high, es.compare.mean, strict=True)
+                    ],
+                    "arrayminus": [
+                        m - lo for m, lo in zip(es.compare.mean, es.compare.ci_low, strict=True)
+                    ],
+                },
+            )
+        )
+    if GAP_STEP in x:
+        fig.add_vline(x=x.index(GAP_STEP), line_dash="dot", line_color=GREY)
     fig.add_hline(y=0, line_color=GREY)
-    fig.update_xaxes(title_text="Hours after the odds jump")
+    unit = "Days after the big move" if es.unit == "days" else "Hours from the event (session bars)"
+    fig.update_xaxes(title_text=unit, type="category")
     fig.update_yaxes(title_text=f"{es.ticker} move (%)")
-    fig.update_layout(height=340, margin={"t": 20, "r": 20}, legend={"orientation": "h"})
+    fig.update_layout(height=360, margin={"t": 20, "r": 20}, legend={"orientation": "h"})
     return fig

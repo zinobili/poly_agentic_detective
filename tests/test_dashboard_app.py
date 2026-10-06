@@ -142,12 +142,12 @@ def test_ticker_picker_switches_between_link_and_control(monkeypatch, tmp_path):
     assert "Fed odds tend to move about 2 hours before TLT (long-term bonds)" in page_text(at)
 
 
-def test_ticker_without_results_shows_not_run(monkeypatch, tmp_path):
+def test_ticker_without_results_shows_not_computed(monkeypatch, tmp_path):
     at = run_app(monkeypatch, _with_fed_results(tmp_path))
     _picker(at).set_value("SPY").run()
-    body = page_text(at)
-    assert "No clear timing link" not in body.split("1 · Who moves first?")[1].split("2 · What")[0]
-    assert body.split("1 · Who moves first?")[1].count("Not run yet") >= 1
+    chart1 = page_text(at).split("1 · Who moves first?")[1].split("2 · What")[0]
+    assert "No clear timing link" not in chart1
+    assert chart1.count("This chart was not computed for this stock.") == 1
 
 
 def test_control_ticker_picker_label_and_title(monkeypatch, tmp_path):
