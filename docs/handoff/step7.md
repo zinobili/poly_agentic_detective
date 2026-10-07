@@ -12,3 +12,4 @@ Plan to be written at step start. Carried-over items below.
 - Fed so-what wording is slightly strong next to Low confidence; soften.
 - Biased BTC exploratory p-values (COIN/MSTR/IBIT lag tests) still sit in the exploratory BH family; say so wherever the family is reported.
 - No real-browser render was checked by the validator; check the dashboard in a browser on the real results.
+- Pair-tab label "Bitcoin · needs data" is wrong for an A29 verdict (the reason is the timing bias, not data). Browser render on real results checked by main 2026-10-08: all cards and the BTC panel render with no errors (after a Streamlit restart; a hot-reloaded server held a stale `text.finding` signature).
