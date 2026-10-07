@@ -76,40 +76,55 @@ def label_panel(xc: XCorr) -> XCorr:
 
 
 def xcorr_title(pair_id: str, xc: XCorr | None, preview: bool = False) -> str:
-    """Action title for chart 1, computed from the results."""
+    """Action title for chart 1, computed from the results. Chart 1 is exploratory, so a
+    timing reading is labelled as such; a panel with a caveat note is not read at all."""
     if xc is None:
         return NOT_RUN
     info, stock = pair_info(pair_id), ticker_label(xc.ticker)
-    shape = classify_xcorr(label_panel(xc))
+    panel = label_panel(xc)
+    if panel.note:
+        return preview_title(
+            f"Not read as evidence: the timing chart for {stock}, after taking out Bitcoin's "
+            "own price, is biased",
+            preview,
+        )
+    shape = classify_xcorr(panel)
     if shape.kind == "lead":
         title = f"{info.odds} tend to move about {_hours(shape.peak_lag)} before {stock}"
     elif shape.kind == "lag":
         title = f"{stock} tends to move about {_hours(shape.peak_lag)} before {info.odds_mid}"
     elif shape.kind == "same":
-        title = f"{info.odds} and {stock} move in the same hour, so neither gets a head start"
+        title = f"The strongest link between {info.odds_mid} and {stock} is in the same hour"
     else:
-        title = (
+        return preview_title(
             f"No clear timing link between {info.odds_mid} and {stock}: every bar sits in the "
-            "noise zone"
+            "noise zone",
+            preview,
         )
-    return preview_title(title, preview)
+    return preview_title(f"{title} (exploratory)", preview)
 
 
 def xcorr_so_what(xc: XCorr | None) -> str:
     if xc is None:
         return NOTHING_TO_CONCLUDE
-    kind = classify_xcorr(label_panel(xc)).kind
+    panel = label_panel(xc)
+    if panel.note:
+        return panel.note
+    kind = classify_xcorr(panel).kind
     if kind == "lead":
         return (
             "This is the kind of early signal we're looking for, but it only counts if the "
             "checklist above also holds up."
         )
     if kind == "lag":
-        return "The stock moves first, so the odds are following the market, not leading it."
+        return (
+            "Here the stock moved first. This chart is a first look, not the test: the verdict "
+            "above is what counts."
+        )
     if kind == "same":
         return (
-            "The odds work like a mirror, not a crystal ball. They show what the market is "
-            "already pricing in, so they give no early warning."
+            "Moving in the same hour is no early warning. This chart is a first look, not the "
+            "test: the verdict above is what counts."
         )
     note = (
         "That's a valid result, not a failure. It means the odds gave no timing edge over "

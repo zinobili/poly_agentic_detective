@@ -198,7 +198,10 @@ def test_btc_odds_that_only_echo_spot_give_no_extra_information():
         no_ctrl += core.reg_nocontrol.tests["lag1"].p_one < 0.01
         with_ctrl += core.reg.tests["lag1"].p_one > 0.10
         reject, adj = models.bh([core.p_one, 0.5, 0.5], verdict.BH_Q)
-        facts = runners.btc_facts(core, bool(reject[0]), float(adj[0]))
+        # bar-aligned controls, so the A29 misalignment does not apply here
+        facts = runners.btc_facts(
+            core, bool(reject[0]), float(adj[0]), spot_control_misaligned=False
+        )
         label_hits += verdict.verdict(facts)[0] == verdict.NO_EXTRA
     assert no_ctrl >= 90 and label_hits >= 90, (no_ctrl, label_hits)
     assert with_ctrl >= 90, with_ctrl
@@ -212,6 +215,75 @@ def test_btc_xlu_placebo_false_failure_rate_is_about_ten_percent():
         grid, controls = _btc_grid(seed, tickers=("IBIT", "XLU"))
         passes += runners.btc_core(grid, controls).xlu.tests["lag1"].p_two > 0.10
     assert 80 <= passes <= 97, passes
+
+
+def _subhour_btc(seed: int, n_sessions: int = 300):
+    """Zero-information odds with sub-hour timing (validator r1 B1, `btc_sim.py`).
+
+    Minute random-walk log spot L. IBIT over each bar = L(end) - L(start) + noise, every bar
+    one clock hour (with the real 30-min last bar, even minute-exact clock-hour controls are
+    misaligned there and the bias reappears, t ~ -4: relevant to any re-specified control). The odds
+    are ~10 min stale: the PM change at a bar = L(end - 10m) - L(start - 10m) + noise, so the
+    odds carry nothing beyond spot. Returns the grid and two as-of spot lookups: hourly closes
+    (as the real `spot_at`, :00 closes read at the :30 stamps) and exact minute prices."""
+    rng = np.random.default_rng(seed)
+    sy = synth.make(
+        seed,
+        n_sessions=n_sessions,
+        tickers=("IBIT",),
+        pair_id="bitcoin_monthly_ladder",
+        hole_rate=0.0,
+        fomc_every=1000,
+    )
+    ts = synth.to_grid(sy).ts_end
+    t0 = int(ts[sy.exists].min()) - 6 * 3600
+    n_min = (int(ts.max()) - t0) // 60 + 2
+    log_spot = np.cumsum(0.001 * rng.standard_normal(n_min))
+
+    def at(t):
+        return log_spot[(np.asarray(t, dtype="int64") - t0) // 60]
+
+    end = np.where(sy.exists, ts, t0 + 6 * 3600)
+    start = end - 3600  # every bar one clock hour, so a clock-hour control CAN align
+    hourly_sd = 0.001 * np.sqrt(60)
+    ibit = at(end) - at(start) + 0.3 * hourly_sd * rng.standard_normal(ts.shape)
+    dpm = at(end - 600) - at(start - 600) + hourly_sd * rng.standard_normal(ts.shape)
+    sy.returns["IBIT"] = np.where(sy.exists, ibit, np.nan)
+    sy.x = np.where(sy.exists, dpm, np.nan)
+
+    def hourly_close(inst):
+        return np.exp(at((np.asarray(inst, dtype="int64") // 3600) * 3600))
+
+    def minute(inst):
+        return np.exp(at(inst))
+
+    return synth.to_grid(sy), hourly_close, minute
+
+
+def test_stale_hourly_spot_control_biases_the_btc_primary_negative():
+    """Prereg A29: with odds that hold NO information beyond spot, the A27 rule 3 control
+    (hourly closes, as-of at the :30 stamps, built by `spot_controls`) pushes the PM
+    coefficient negative; a control aligned to the bar does not. This is why the BTC primary
+    is published as "Too early to tell"."""
+    biased, aligned_ok = 0, 0
+    for seed in range(20):
+        grid, hourly_close, minute = _subhour_btc(seed)
+        stale = primary.btc_regression(grid, primary.spot_controls(grid, hourly_close))[1]
+        exact = primary.btc_regression(grid, primary.spot_controls(grid, minute))[1]
+        biased += stale.tests["lag1"].t < -3.0
+        aligned_ok += abs(exact.tests["lag1"].t) < 2.58
+    assert biased >= 19, biased
+    assert aligned_ok >= 18, aligned_ok
+
+
+def test_a29_publishes_the_biased_btc_primary_as_too_early_to_tell():
+    grid, hourly_close, _ = _subhour_btc(0, n_sessions=200)
+    core = runners.btc_core(grid, primary.spot_controls(grid, hourly_close))
+    facts = runners.btc_facts(core, False, 0.9)
+    assert core.reg.tests["lag1"].estimate < 0
+    assert verdict.verdict(facts) == (verdict.TOO_EARLY, verdict.A29_REASON)
+    assert verdict.verdict(facts, literal_a29=True)[0] != verdict.TOO_EARLY
+    assert verdict.primary_status(facts) == verdict.NOT_VALID
 
 
 # ---------------------------------------------------------------- rows 7-8: BH

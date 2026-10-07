@@ -33,7 +33,7 @@ def test_lead_title_for_fed_and_tlt():
     xc = xcorr("TLT", p2=0.2, p3=0.15)
     assert (
         text.xcorr_title("fed_decision", xc)
-        == "Fed odds tend to move about 2 hours before TLT (long-term bonds)"
+        == "Fed odds tend to move about 2 hours before TLT (long-term bonds) (exploratory)"
     )
 
 
@@ -44,15 +44,21 @@ def test_one_hour_is_singular():
 
 def test_negative_lag_says_stock_moves_first():
     title = text.xcorr_title("fed_decision", xcorr("TLT", m2=0.2, m1=0.15))
-    assert title == "TLT (long-term bonds) tends to move about 2 hours before Fed odds"
+    assert (
+        title == "TLT (long-term bonds) tends to move about 2 hours before Fed odds (exploratory)"
+    )
 
 
-def test_peak_at_zero_means_same_hour():
+def test_peak_at_zero_is_an_exploratory_same_hour_reading_without_a_mirror_claim():
+    """Validator r1 M1: chart 1 is exploratory; no "neither gets a head start", no "mirror"."""
     xc = xcorr("SPY", band=0.1, p0=0.25, p1=0.15)
     title = text.xcorr_title("us_recession", xc)
     assert title == (
-        "Recession odds and SPY (S&P 500) move in the same hour, so neither gets a head start"
+        "The strongest link between recession odds and SPY (S&P 500) is in the same hour "
+        "(exploratory)"
     )
+    so_what = text.xcorr_so_what(xc)
+    assert "mirror" not in so_what and "not the test" in so_what
 
 
 def test_lone_bar_outside_the_simultaneous_band_is_a_link():
@@ -91,8 +97,13 @@ def test_bar_exactly_on_the_band_is_inside():
 def test_preview_prefix_when_not_enough_data():
     xc = xcorr("TLT", p2=0.2, p3=0.15)
     assert text.xcorr_title("fed_decision", xc, preview=True).startswith("Preview: Fed odds")
-    res = results(xcorr={"TLT": xc}, confidence=Confidence("Not enough data", "Only 2 releases."))
-    assert text.finding("fed_decision", res, "TLT").startswith("Preview: ")
+    res = results(
+        xcorr={"TLT": xc},
+        confidence=Confidence("Not enough data", "Only 2 releases."),
+        verdict="Too early to tell",
+        primary_ticker="TLT",
+    )
+    assert text.finding("fed_decision", res).startswith("Preview: Too early to tell")
 
 
 def test_checklist_line_plain_first_technical_separate():
@@ -163,12 +174,44 @@ def test_control_ticker_no_link_is_good_news():
     assert "good news" not in text.xcorr_so_what(xcorr("TLT"))
 
 
-def test_per_ticker_finding_and_missing_ticker():
-    res = results(xcorr={"TLT": xcorr("TLT", p2=0.2, p3=0.15), "XLU": xcorr("XLU")})
-    assert text.finding("fed_decision", res, "TLT").startswith("Fed odds tend to move about 2")
-    assert text.finding("fed_decision", res, "XLU").startswith("No clear timing link")
-    assert text.finding("fed_decision", res, "SPY") == "Not run yet"
-    assert text.so_what(res, "SPY") == text.NOTHING_TO_CONCLUDE
+def test_finding_comes_from_the_verdict_for_the_primary_ticker_not_from_chart1():
+    """Validator r1 M1: an exploratory same-hour chart 1 never becomes the headline."""
+    same_hour = xcorr("TLT", band=0.1, p0=0.25)
+    res = results(
+        xcorr={"TLT": same_hour, "SPY": xcorr("SPY", p2=0.3)},
+        verdict="No head start",
+        primary_ticker="TLT",
+    )
+    assert text.finding("fed_decision", res) == (
+        "Fed odds give no head start on TLT (long-term bonds)"
+    )
+    assert "mirror" not in text.so_what(res) and "same hour" not in text.so_what(res)
+    btc = results(
+        "bitcoin_monthly_ladder",
+        xcorr={"COIN": xcorr("COIN", p0=0.5)},
+        verdict="Too early to tell",
+        primary_ticker="IBIT",
+    )
+    assert text.finding("bitcoin_monthly_ladder", btc) == (
+        "Too early to tell whether Bitcoin price odds move before IBIT (Bitcoin ETF)"
+    )
+
+
+def test_no_results_or_no_verdict_finding_is_not_run():
+    assert text.finding("fed_decision", None) == "Not run yet"
+    res = results(xcorr={"TLT": xcorr("TLT", p2=0.2, p3=0.15)})
+    assert text.finding("fed_decision", res) == "Not run yet"
+    assert text.so_what(res) == text.NOTHING_TO_CONCLUDE
+
+
+def test_untested_ticker_never_gets_a_verdict_sentence():
+    """BTC-USD (spot) is never a tested target: no sentence names it."""
+    res = results("bitcoin_monthly_ladder", verdict="No head start", primary_ticker="IBIT")
+    assert "BTC-USD" not in text.finding("bitcoin_monthly_ladder", res)
+    no_primary = results("bitcoin_monthly_ladder", verdict="No head start")
+    assert text.finding("bitcoin_monthly_ladder", no_primary) == (
+        "Bitcoin price odds give no head start on related stocks"
+    )
 
 
 def test_headline_does_not_claim_a_finding_when_every_verdict_is_too_early():
@@ -228,16 +271,39 @@ def test_chart1_states():
 
 
 def test_finding_without_a_chart1_uses_the_verdict():
-    res = results("us_cpi_inflation", xcorr_not_in_plan=True, verdict="Too early to tell")
-    assert text.finding("us_cpi_inflation", res, "TLT") == (
+    res = results(
+        "us_cpi_inflation",
+        xcorr_not_in_plan=True,
+        verdict="Too early to tell",
+        primary_ticker="TLT",
+    )
+    assert text.finding("us_cpi_inflation", res) == (
         "Too early to tell whether inflation odds move before TLT (long-term bonds)"
     )
     pre = results(
         "us_recession",
         verdict="Descriptive only",
         confidence=Confidence("Not enough data", "x"),
+        primary_ticker="IWM-SPY",
     )
-    assert text.finding("us_recession", pre, "IWM-SPY").startswith("Preview: A description")
+    assert text.finding("us_recession", pre).startswith("Preview: A description")
+
+
+def test_biased_residualised_panel_is_not_read():
+    """Prereg A29: a residualised panel with a caveat note gives no timing title."""
+    raw = xcorr("IBIT", p0=0.5)
+    biased = xcorr("IBIT", p1=-0.5)
+    biased = XCorr(biased.ticker, biased.lags, biased.r, biased.band, note="Not read as evidence")
+    xc = XCorr(raw.ticker, raw.lags, raw.r, raw.band, biased)
+    title = text.xcorr_title("bitcoin_monthly_ladder", xc)
+    assert title.startswith("Not read as evidence") and "before" not in title
+    assert text.xcorr_so_what(xc) == "Not read as evidence"
+
+
+def test_event_study_note_explains_a_missing_chart2():
+    res = results(verdict="No head start", event_study_notes={"TLT": "Too few events"})
+    assert text.event_study_note(res, "TLT") == "Too few events"
+    assert text.event_study_note(res, "SPY") is None
 
 
 def test_opposite_sign_status_line():

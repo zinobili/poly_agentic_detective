@@ -56,7 +56,7 @@ def bar_study(
     window: tuple[int, int],
     fold: bool,
     seed: int = BAND_SEED,
-) -> ev.EventStudyOut | None:
+) -> ev.EventStudyOut | ev.TooFewEvents:
     """Fed/BTC layout: bars -pre..+post around bar 0, gaps explicit (Fed) or folded (BTC).
     The random-date band draws, for each event, a non-event path at the same bar position."""
     cells, where = flat_index(grid)
@@ -73,7 +73,22 @@ def bar_study(
         pool = [p for p in pool if p.labels == paths[0].labels]
     band = matched_band(pool, [p.pos for p in paths], seed)
     times = [int(grid.ts_end[p.session, p.pos]) for p in paths]
-    return ev.summarise(paths, band, times, unsigned, dropped)
+    return _summary(paths, band, times, unsigned, dropped, len(bar0s))
+
+
+def _summary(
+    paths: list[ev.EventPath],
+    band: tuple[np.ndarray, np.ndarray] | None,
+    times: list[int],
+    unsigned: int,
+    dropped: int,
+    n_candidates: int,
+) -> ev.EventStudyOut | ev.TooFewEvents:
+    """The event study, or the counts that explain why there is none."""
+    out = ev.summarise(paths, band, times, unsigned, dropped)
+    if out is not None:
+        return out
+    return ev.TooFewEvents(n_candidates, len(paths), unsigned, dropped)
 
 
 def matched_band(
@@ -102,7 +117,7 @@ def cpi_study(
     release_sessions: list[int],
     pool_sessions: list[int],
     seed: int = BAND_SEED,
-) -> ev.EventStudyOut | None:
+) -> ev.EventStudyOut | ev.TooFewEvents:
     """CPI layout: the opening gap, then bars 0..+5 of the release session. Signed by the PM
     change in the bar before bar 0 (the previous session's last bar)."""
     cells, where = flat_index(grid)
@@ -129,7 +144,7 @@ def cpi_study(
     pool, _, _ = build(pool_sessions)
     band = ev.random_band(pool, len(paths), seed) if paths else None
     times = [int(grid.ts_end[p.session, 0]) for p in paths]
-    return ev.summarise(paths, band, times, unsigned, dropped)
+    return _summary(paths, band, times, unsigned, dropped, len(release_sessions))
 
 
 def btc_events(grid: SessionGrid, k: int = BTC_EVENTS) -> list[tuple[int, int]]:

@@ -114,7 +114,7 @@ def _render_top(specs: tuple[PairSpec, ...], results: text.Results) -> None:
             st.markdown(f"**{info.name}**")
             st.caption(info.question)
             st.markdown(_badge(res), unsafe_allow_html=True)
-            st.write(text.finding(spec.pair_id, res, spec.tickers[0]))
+            st.write(text.finding(spec.pair_id, res))
             st.markdown(_meter(res), unsafe_allow_html=True)
             st.caption(text.confidence_view(res.confidence if res else None).reason)
             st.button(
@@ -140,14 +140,14 @@ def _render_rules() -> None:
         st.write(text.NULL_RESULT)
 
 
-def _render_verdict(pair_id: str, res: PairResults | None, ticker: str) -> None:
+def _render_verdict(pair_id: str, res: PairResults | None) -> None:
     info = text.pair_info(pair_id)
     with st.container(border=True):
         st.caption(info.name)
-        st.header(text.finding(pair_id, res, ticker))
+        st.header(text.finding(pair_id, res))
         view = text.confidence_view(res.confidence if res else None)
         st.markdown(_badge(res) + " &nbsp; " + _meter(res), unsafe_allow_html=True)
-        st.write(f"**So what.** {text.so_what(res, ticker)}")
+        st.write(f"**So what.** {text.so_what(res)}")
         if res is not None and res.verdict_reason:
             st.caption(f"Why this verdict: {res.verdict_reason}")
         st.markdown(f"**How sure are we? {_esc(view.word)}**")
@@ -158,10 +158,10 @@ def _render_verdict(pair_id: str, res: PairResults | None, ticker: str) -> None:
                 st.markdown(f'<div class="tech">{_esc(technical)}</div>', unsafe_allow_html=True)
 
 
-def _not_shown(state: str) -> None:
+def _not_shown(state: str, note: str | None = None) -> None:
     computed = state == "not_computed"
     st.subheader("Not computed for this stock" if computed else text.NOT_RUN)
-    st.info(text.not_computed_note() if computed else text.not_run_chart_note())
+    st.info(note or (text.not_computed_note() if computed else text.not_run_chart_note()))
 
 
 def _render_chart1(pair_id: str, res: PairResults | None, ticker: str) -> None:
@@ -180,6 +180,8 @@ def _render_chart1(pair_id: str, res: PairResults | None, ticker: str) -> None:
         st.write(f"**How to read.** {text.xcorr_how_to_read(xc.residualised is not None)}")
         if xc.residualised is not None:
             st.markdown("**After taking out Bitcoin's own price**")
+            if xc.residualised.note:
+                st.warning(xc.residualised.note)
             st.plotly_chart(charts.xcorr_figure(xc.residualised), width="stretch")
             st.markdown("**Raw link**")
         st.plotly_chart(charts.xcorr_figure(xc), width="stretch")
@@ -197,7 +199,7 @@ def _render_chart2(pair_id: str, res: PairResults | None, ticker: str) -> None:
     with st.container(border=True):
         st.caption(f"2 · What happens around {text.pair_info(pair_id).events}?")
         if state != "chart":
-            _not_shown(state)
+            _not_shown(state, text.event_study_note(res, ticker))
             return
         st.subheader(text.event_study_title(pair_id, es, text.is_preview(res)))
         st.write(f"**How to read.** {text.event_study_how_to_read(es)}")
@@ -228,7 +230,7 @@ def _render_chart3(pair_id: str, panel: pd.DataFrame | None, ticker: str) -> Non
 
 def _render_evidence(spec: PairSpec, res: PairResults | None, panel: pd.DataFrame | None) -> None:
     st.markdown('<div id="evidence"></div>', unsafe_allow_html=True)
-    _render_verdict(spec.pair_id, res, spec.tickers[0])
+    _render_verdict(spec.pair_id, res)
     ticker = st.radio(
         "Compare against",
         spec.tickers,

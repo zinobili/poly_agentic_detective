@@ -260,3 +260,73 @@ print on 10 of 12 months. It says nothing about stocks.
    normal test (expect ~3.7%).
 3. `python -m poly_actor.analysis run --workers 4`, then the AppTest on the real results and
    validation round 1.
+
+## Round 1 fixes (2026-10-08, after `docs/reviews/step6_r1.md`)
+
+No method change. BH family, A27/A28 computations and every number in the results are unchanged
+(BH adjusted p: Fed 0.5235, BTC 1.0, CPI 0.5235, as before).
+
+### B1: prereg A29 implemented
+- `verdict.Facts.control_misaligned` (set by `runners.btc_facts`, default True for the
+  pre-registered `spot_controls`; synthetic bar-aligned tests pass False). With it, the
+  published BTC verdict is "Too early to tell", reason `A29_REASON`, confidence Low
+  (`A29_CONFIDENCE`). The literal A27 verdict is kept as
+  `verdict_if_a27_rule3_read_literally` (real data: "No head start").
+- `primary_status` returns the new status "Not valid" (icon ⚠) instead of "Failed (opposite
+  sign)" for BTC. The "Beyond Bitcoin's own price" and "Robustness" rows also read "Not valid"
+  (both use the with-control model). No "rule out a lead" text for BTC.
+- A29 item 3: the residualised Chart 1 panels of IBIT, COIN and MSTR carry `note` (A29_NOTE).
+  The dashboard shows it as a warning above the panel, and the chart title reads "Not read as
+  evidence: ..." instead of a timing reading. XLU's residualised panel is not named by A29 and
+  has no note. The summary.json exploratory rows `btc_COIN_lag1`, `btc_MSTR_lag1`,
+  `btc_IBIT_lag2`, `btc_IBIT_lag3` and `details.exploratory` carry the same note.
+- Tests: `test_stale_hourly_spot_control_biases_the_btc_primary_negative` (minute random walk,
+  zero-information odds 10 min stale, controls from `spot_controls` on hourly closes: PM t < -3
+  in ≥ 19/20 seeds; minute-exact clock-hour controls: |t| < 2.58 in ≥ 18/20).
+  `test_a29_publishes_the_biased_btc_primary_as_too_early_to_tell`, `test_a29_btc_publication`
+  (written JSON), and verdict unit tests.
+- Finding for any re-specified control (option b): with the real 30-min last bar, even
+  minute-exact clock-hour lags are misaligned on that bar and the bias comes back (t ≈ -4 in a
+  scratch run). A bar-aligned control must use the bar's own start and end.
+
+### M1: headlines from the verdict
+- Results carry `primary_ticker` (Fed TLT, BTC IBIT, CPI TLT, recession IWM-SPY).
+- `text.finding(pair_id, results)` = the verdict sentence for the primary ticker (no ticker
+  argument; no chart 1 input). `text.so_what(results)` reads `VERDICT_SO_WHAT` by verdict.
+  Untested tickers (BTC-USD) never get a verdict sentence.
+- Chart 1 titles with a timing reading end "(exploratory)"; the same-hour title is "The strongest
+  link between ... is in the same hour (exploratory)"; "so neither gets a head start" and the
+  "mirror" so-what are gone. Note: `docs/design/dashboard_ux.md` still shows the old same-hour
+  title as an example; it is superseded by this fix.
+
+### Minors
+- m1 fixed: Fed/CPI placebo rows read "Not needed" when the primary is not BH-significant; the
+  technical text states pass yes/no.
+- m2 fixed: BTC R3 is `holds: null` ("not applicable"); per-pair robustness wording.
+- m3 fixed: `studies.bar_study`/`cpi_study` return `TooFewEvents` counts. Results write
+  `event_study_notes` (shown in chart 2) and `details.event_study_counts`. Real data: Fed 2 of
+  16 usable (14 unsigned); CPI 0 of 20 (20 unsigned).
+- m4 fixed: `nocontrol_p is not None` (p = 0.0 fires rule 7.4).
+- m5 fixed: "Enough data for the test".
+- m6 fixed: sub-hour test above; lesson added to `lessons.md`.
+- m7 fixed: Medium needs `placebo_pass is True`.
+- m8 deferred: the BTC overnight spot-gap control has the same 30-min misalignment, but A29 does
+  not name it; needs a user decision (note or amendment).
+- m9: verified, no dashboard text uses the overnight exploratory rejections.
+
+### Needs a decision
+- BTC Chart 2 is residualised on the same spot control; A29 does not name it, so it has no note.
+- CPI chart 2: all 20 releases unsigned (|Δ| < 0.005 pp, or NaN, in the bar before the open; `sign_of` counts a missing change as unsigned, so the counts do not separate the two). The signing
+  rule never fires on real data; worth checking whether the CPI signal ever moves overnight
+  in that bar (lesson: check a rule fires on real data).
+
+### Real run (after the fixes)
+fed_decision No head start (Low); bitcoin_monthly_ladder Too early to tell (Low; literal "No
+head start"); us_cpi_inflation Too early to tell (Low); us_recession Descriptive only (Low).
+Headline: "So far no pair shows Polymarket odds moving ahead of stocks; 3 of 4 are still
+undecided or descriptive only". Cards: "Fed odds give no head start on TLT (long-term bonds)";
+"Too early to tell whether Bitcoin price odds move before IBIT (Bitcoin ETF)"; "Too early to tell
+whether inflation odds move before TLT (long-term bonds)"; "A description of how IWM-SPY (small
+vs large companies) moved on the biggest days for recession odds".
+
+Checks: `bash scripts/check.sh` PASS (443 passed, ruff clean, pairs.yaml reproducible, ingest dry run OK). AppTest on the real results: every card and every ticker of each picker render with no exception.

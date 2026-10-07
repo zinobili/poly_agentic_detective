@@ -40,6 +40,24 @@ SAME = "Moves at the same time"
 # always gates.
 RELATIVE_PLACEBO = frozenset({"fed", "cpi"})
 
+# Prereg A29 (POST-HOC, 2026-10-08, made after the real results were seen). The A27 rule 3
+# spot control (hourly BTC-USD closes, ~30 min stale at the :30 bar stamps) overlaps the window
+# of the lagged odds change and biases the BTC primary negative by construction (validator r1
+# B1; pinned by `test_stale_hourly_spot_control_biases_the_btc_primary_negative`). The frozen
+# computation still runs; its literal verdict is kept (`verdict(literal_a29=True)`, results key
+# `verdict_if_a27_rule3_read_literally`), and the published BTC verdict is "Too early to tell".
+A29_REASON = (
+    "The pre-registered adjustment for Bitcoin's own price is misaligned with the ETF's hourly "
+    "bar by about 30 minutes, so the test is biased and cannot give an answer."
+)
+A29_CONFIDENCE = "The main test is biased by a timing mismatch, so it supports no conclusion."
+A29_NOTE = (
+    "Not read as evidence: this uses the same adjustment for Bitcoin's own price as the main "
+    "test, which is about 30 minutes off the ETF's hourly bar and biases the result."
+)
+NOT_VALID = "Not valid"
+A29_CHART1_TICKERS = frozenset({"IBIT", "COIN", "MSTR"})  # residualised Chart 1 panels noted
+
 
 @dataclass(frozen=True)
 class Facts:
@@ -62,6 +80,7 @@ class Facts:
     nocontrol_p: float | None = None  # BTC
     close_proxy_ok: bool | None = None  # CPI
     robust_hold: bool | None = None
+    control_misaligned: bool = False  # BTC, prereg A29: the spot control biases the primary
 
     @property
     def opposite_sign(self) -> bool:
@@ -77,17 +96,25 @@ def placebo_gates(f: Facts, literal: bool = False) -> bool:
     return literal or f.pair not in RELATIVE_PLACEBO or f.bh_reject
 
 
-def verdict(f: Facts, literal_placebo: bool = False) -> tuple[str, str]:
-    """(verdict, reason). A27 rule 7 (A28 items 2-3), first matching row wins."""
+def verdict(f: Facts, literal_placebo: bool = False, literal_a29: bool = False) -> tuple[str, str]:
+    """(verdict, reason). A27 rule 7 (A28 items 2-3), first matching row wins. A29: a BTC
+    primary with the misaligned spot control is "Too early to tell" unless `literal_a29`."""
     if f.pair == "recession":
         return DESCRIPTIVE, "One episode, so no significance test is made (pre-registered)."
     if not f.sufficient:
         return TOO_EARLY, f"Not enough data: {f.sufficiency_note}"
     if f.validation_ok is False:
         return TOO_EARLY, "The method check on resolved months failed."
+    if f.control_misaligned and not literal_a29:
+        return TOO_EARLY, A29_REASON
     if placebo_gates(f, literal_placebo):
         return TOO_EARLY, f"Placebo failed: {f.placebo_note}"
-    if f.pair == "btc" and not f.bh_reject and (f.nocontrol_p or 1.0) < NO_EXTRA_P:
+    if (
+        f.pair == "btc"
+        and not f.bh_reject
+        and f.nocontrol_p is not None
+        and f.nocontrol_p < NO_EXTRA_P
+    ):
         return NO_EXTRA, "The odds track Bitcoin's own price; after it, they add nothing."
     if not f.bh_reject:
         if f.upper_r is not None and f.upper_r < NULL_MARGIN[f.pair]:
@@ -110,10 +137,14 @@ def confidence(f: Facts) -> tuple[str, str]:
         return "Low", "One episode and no significance test; read as a description only."
     if not f.sufficient or f.validation_ok is False:
         return "Not enough data", f.sufficiency_note or "The method check failed."
+    if f.control_misaligned:
+        return "Low", A29_CONFIDENCE
     if placebo_gates(f):
         return "Low", "The placebo check did not pass."
     if not f.bh_reject:
         return "Low", "The main test is not significant after the many-pairs correction."
+    if f.placebo_pass is not True:  # rule 10: Medium needs a placebo that ran and passed
+        return "Low", "Significant, but the placebo check could not be run."
     if not f.robust_hold:
         return "Low", "Significant, but it does not survive every robustness check."
     high = (
@@ -129,6 +160,8 @@ def confidence(f: Facts) -> tuple[str, str]:
 
 
 def primary_status(f: Facts) -> str:
+    if f.control_misaligned:  # A29: no "Failed (opposite sign)" for a biased test
+        return NOT_VALID
     if f.opposite_sign:
         return "Failed (opposite sign)"
     if f.bh_reject:

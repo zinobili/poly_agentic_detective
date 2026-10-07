@@ -12,7 +12,17 @@ import pandas as pd
 import pytest
 
 import analysis_synth as synth
-from poly_actor.analysis import cpi, events, models, placebo, primary, sample, studies, verdict
+from poly_actor.analysis import (
+    cpi,
+    events,
+    models,
+    placebo,
+    primary,
+    results,
+    sample,
+    studies,
+    verdict,
+)
 from poly_actor.analysis.verdict import Facts
 
 ET = ZoneInfo("America/New_York")
@@ -290,7 +300,13 @@ def test_unsigned_events_are_counted_not_used():
         (3, 6),
         fold=False,
     )
-    assert out is None  # nothing signed, so no chart
+    # nothing signed, so no chart; the counts are kept so the reader is told why (r1 m3)
+    assert out == events.TooFewEvents(29, 0, 29, 0)
+    slots = results.study_slots({"TLT": out})
+    assert slots["event_study"] == {}
+    assert slots["event_study_counts"]["TLT"]["n_unsigned"] == 29
+    note = slots["event_study_notes"]["TLT"]
+    assert "0 of 29 could be used (29 had no clear odds move, or no odds reading" in note
 
 
 def test_greedy_extremes_keep_two_days_apart():
@@ -355,3 +371,50 @@ def test_confidence_levels():
     assert verdict.confidence(cpi_high)[0] == "Medium"  # High is unattainable for CPI
     assert verdict.confidence(Facts(pair="fed", sufficient=False))[0] == "Not enough data"
     assert verdict.confidence(Facts(pair="fed", **BASE))[0] == "Low"
+
+
+def test_nocontrol_p_of_exactly_zero_is_not_read_as_one():
+    """Validator r1 m4: an underflowed p = 0.0 must still fire rule 7.4."""
+    for p in (0.0, 1e-300):
+        f = Facts(pair="btc", placebo_pass=True, nocontrol_p=p, **BASE)
+        assert verdict.verdict(f)[0] == verdict.NO_EXTRA
+    assert verdict.verdict(Facts(pair="btc", nocontrol_p=None, **BASE))[0] == verdict.NO_HEAD_START
+
+
+def test_medium_needs_a_placebo_that_ran_and_passed():
+    """Validator r1 m7 (A27 rule 10): no placebo result means no Medium."""
+    f = Facts(pair="fed", bh_reject=True, placebo_pass=None, robust_hold=True, bh_q=0.02, **BASE)
+    assert verdict.confidence(f)[0] == "Low"
+
+
+# ---------------------------------------------------------------- prereg A29 (BTC)
+
+
+A29_BTC = dict(
+    pair="btc",
+    sufficient=True,
+    placebo_pass=True,
+    p_one=0.999,
+    p_two=1e-12,
+    estimate_h1_sign=False,  # strongly negative, as on the real data
+    upper_r=-0.1,
+    lower_r=-0.25,
+    nocontrol_p=0.85,
+)
+
+
+def test_a29_btc_is_published_too_early_with_the_literal_verdict_kept():
+    f = Facts(**A29_BTC, control_misaligned=True)
+    label, reason = verdict.verdict(f)
+    assert label == verdict.TOO_EARLY and reason == verdict.A29_REASON
+    assert "rule out" not in reason
+    assert verdict.verdict(f, literal_a29=True)[0] == verdict.NO_HEAD_START
+    assert verdict.confidence(f) == ("Low", verdict.A29_CONFIDENCE)
+    assert verdict.primary_status(f) == verdict.NOT_VALID  # not "Failed (opposite sign)"
+    literal = Facts(**A29_BTC)
+    assert verdict.primary_status(literal) == "Failed (opposite sign)"
+
+
+def test_a29_still_lets_insufficient_data_speak_first():
+    f = Facts(**{**A29_BTC, "sufficient": False}, control_misaligned=True)
+    assert verdict.confidence(f)[0] == "Not enough data"

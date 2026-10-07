@@ -60,12 +60,40 @@ def xcorr_json(res: placebo.XcorrResult) -> dict:
     }
 
 
-def event_json(out: ev.EventStudyOut | None) -> dict | None:
-    if out is None:
+def event_json(out: ev.EventStudyOut | ev.TooFewEvents | None) -> dict | None:
+    if not isinstance(out, ev.EventStudyOut):
         return None
     doc = out.as_contract("bars")
     doc["event_times"] = [_iso(t) for t in out.event_ts]
     return doc
+
+
+def too_few_note(c: ev.TooFewEvents) -> str:
+    """Reader-facing reason for a missing chart 2, with the A27 rule 13 counts."""
+    return (
+        f"Too few events to draw this chart: {c.n_used} of {c.n_candidates} could be used "
+        f"({c.n_unsigned} had no clear odds move, or no odds reading, just before; "
+        f"{c.n_dropped} had missing prices); at least {c.min_events} are needed."
+    )
+
+
+def study_slots(studies: dict) -> dict:
+    """Contract slots from raw chart-2 outputs: the drawn studies, the reasons for the missing
+    ones, and every count (drawn or not) for the details."""
+    drawn = {t: event_json(o) for t, o in studies.items() if isinstance(o, ev.EventStudyOut)}
+    few = {t: o for t, o in studies.items() if isinstance(o, ev.TooFewEvents)}
+    counts = {
+        t: {"n_used": len(o.paths), "n_unsigned": o.n_unsigned, "n_dropped": o.n_dropped}
+        if isinstance(o, ev.EventStudyOut)
+        else o.as_dict()
+        for t, o in studies.items()
+        if o is not None
+    }
+    return {
+        "event_study": drawn,
+        "event_study_notes": {t: too_few_note(c) for t, c in few.items()},
+        "event_study_counts": counts,
+    }
 
 
 def _iso(epoch_s: int) -> str:
@@ -89,7 +117,7 @@ def _common(facts: Facts, bh: dict) -> tuple[list[dict], dict]:
         _row(
             "Enough data",
             "Passed" if facts.sufficient else "Failed",
-            "Enough cases to be sure",
+            "Enough data for the test",
             facts.sufficiency_note,
         ),
     ]
@@ -99,25 +127,44 @@ def _common(facts: Facts, bh: dict) -> tuple[list[dict], dict]:
         "confidence": {"level": level, "reason": why},
         "verdict_if_placebo_read_literally": literal,
     }
+    if facts.control_misaligned:
+        head["verdict_if_a27_rule3_read_literally"] = verdict.verdict(facts, literal_a29=True)[0]
+        head["a29_note"] = verdict.A29_NOTE
     return rows, head
 
 
+ROBUST_PLAIN = {
+    "fed": "Holds in robustness checks (clustered errors, without the biggest moves, without "
+    "event days)",
+    "btc": "Holds in robustness checks (clustered errors, without the biggest moves)",
+}
+
+
 def _robust_row(rob: dict | None, facts: Facts) -> dict:
+    plain = ROBUST_PLAIN.get(facts.pair, "Holds in robustness checks")
     if rob is None:
-        return _row("Robustness", "Not run", "Holds in robustness checks", "")
-    parts = [
-        f"{k.split('_')[0]} {'holds' if v.get('holds') else 'fails'}"
-        for k, v in rob.items()
-        if k.startswith("R")
-    ]
+        return _row("Robustness", "Not run", plain, "")
+    parts = []
+    for k, v in rob.items():
+        if not k.startswith("R"):
+            continue
+        state = {True: "holds", False: "fails", None: "not applicable"}[v.get("holds")]
+        parts.append(f"{k.split('_')[0]} {state}")
     status = "Passed" if rob["all_hold"] else ("Failed" if facts.bh_reject else "Weak")
-    return _row(
-        "Robustness",
-        status,
-        "Holds in robustness checks (clustered errors, without the biggest moves, without event "
-        "days)",
-        "; ".join(parts) + " (sign unchanged and one-sided p < 0.10)",
-    )
+    technical = "; ".join(parts) + " (sign unchanged and one-sided p < 0.10)"
+    if facts.control_misaligned:  # A29: these runs use the same biased control
+        status, technical = verdict.NOT_VALID, f"{technical}. Prereg A29: {verdict.A29_NOTE}"
+    return _row("Robustness", status, plain, technical)
+
+
+def _relative_placebo_status(passes: bool | None, facts: Facts) -> str:
+    """Fed and CPI placebos gate only a significant primary (prereg A28 item 2); for a null one
+    they are reported, not used, so the row reads "Not needed" rather than "Failed"."""
+    if passes is None:
+        return "Not run"
+    if not facts.bh_reject:
+        return "Not needed"
+    return "Passed" if passes else "Failed"
 
 
 # ---------------------------------------------------------------- Fed
@@ -127,6 +174,7 @@ def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict
     t = core.reg.tests["sum"]
     lead = core.reg.tests["lead"]
     rows, head = _common(facts, bh)
+    slots = study_slots(studies)
     plc = core.placebo
     rows = [
         _row(
@@ -149,11 +197,12 @@ def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict
         ),
         _row(
             "Placebo",
-            "Passed" if facts.placebo_pass else "Failed",
-            "Link vanishes when timing is scrambled",
+            _relative_placebo_status(facts.placebo_pass, facts),
+            "Link vanishes when timing is scrambled (only needed when the main test passes)",
             f"session-shift permutation p of the HAC t of b0+b1+b2 = "
-            f"{_fmt(plc['permutation_p'])} over {plc['n_shifts']} shifts (passes if < 0.10; "
-            "gates the verdict only when the primary is significant, prereg A28)",
+            f"{_fmt(plc['permutation_p'])} over {plc['n_shifts']} shifts (passes if < 0.10: "
+            f"{'yes' if facts.placebo_pass else 'no'}; gates the verdict only when the primary "
+            "is significant, prereg A28)",
         ),
         *rows,
         _robust_row(core.robustness, facts),
@@ -162,14 +211,17 @@ def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict
     stocks_first = core.xcorr["TLT"].stocks_first if "TLT" in core.xcorr else None
     return {
         "pair_id": "fed_decision",
+        "primary_ticker": "TLT",
         **head,
         "stocks_first": stocks_first,
         "n_events": extra.get("n_events"),
         "params": PARAMS,
         "xcorr": xc,
-        "event_study": {k: v for k, v in studies.items() if v is not None},
+        "event_study": slots["event_study"],
+        "event_study_notes": slots["event_study_notes"],
         "checklist": rows,
         "details": {
+            "event_study_counts": slots["event_study_counts"],
             "primary": core.reg.as_dict(),
             "placebo_shift": plc,
             "robustness": core.robustness,
@@ -186,12 +238,15 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
     t = core.reg.tests["lag1"]
     nc = core.reg_nocontrol.tests["lag1"]
     rows, head = _common(facts, bh)
+    slots = study_slots(studies)
     xlu = core.xlu.tests["lag1"] if core.xlu else None
-    beyond = (
-        verdict.primary_status(facts)
-        if not (not facts.bh_reject and nc.p_one < verdict.NO_EXTRA_P)
-        else "Failed"
-    )
+    if facts.control_misaligned:  # A29: the with-control side of this row is biased
+        beyond = verdict.NOT_VALID
+    elif not facts.bh_reject and nc.p_one < verdict.NO_EXTRA_P:
+        beyond = "Failed"
+    else:
+        beyond = verdict.primary_status(facts)
+    a29 = f" Prereg A29: {verdict.A29_NOTE}" if facts.control_misaligned else ""
     rows = [
         _row(
             "Primary test",
@@ -199,14 +254,14 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
             "Odds an hour earlier help predict the Bitcoin ETF beyond Bitcoin's own price",
             f"IBIT on Δln(ladder) at t-1 with BTC-USD lags 0-3: {_fmt(t.estimate)} bp per 1% "
             f"(90% CI {_fmt(t.ci_low)} to {_fmt(t.ci_high)}), one-sided HAC p = {_fmt(t.p_one)}, "
-            f"n = {core.reg.n}",
+            f"n = {core.reg.n}.{a29}",
         ),
         _row(
             "Beyond Bitcoin's own price",
             beyond,
             "The odds add something beyond Bitcoin's own price",
             f"without the spot control: {_fmt(nc.estimate)} bp per 1% (one-sided p = "
-            f"{_fmt(nc.p_one)}); with it: one-sided p = {_fmt(t.p_one)}",
+            f"{_fmt(nc.p_one)}); with it: one-sided p = {_fmt(t.p_one)}.{a29}",
         ),
         _row(
             "Placebo",
@@ -222,26 +277,33 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
         *rows,
         _robust_row(core.robustness, facts),
     ]
+    note = {"note": verdict.A29_NOTE} if facts.control_misaligned else {}
     xc = {}
     for tk, raw in core.xcorr_raw.items():
-        xc[tk] = {**xcorr_json(raw), "residualised": xcorr_json(core.xcorr_resid[tk])}
+        resid = xcorr_json(core.xcorr_resid[tk])
+        if tk in verdict.A29_CHART1_TICKERS:  # A29 item 3 names these three panels
+            resid.update(note)
+        xc[tk] = {**xcorr_json(raw), "residualised": resid}
     stocks_first = core.xcorr_resid["IBIT"].stocks_first if "IBIT" in core.xcorr_resid else None
     return {
         "pair_id": "bitcoin_monthly_ladder",
+        "primary_ticker": "IBIT",
         **head,
         "stocks_first": stocks_first,
         "n_events": extra.get("n_events"),
         "params": PARAMS,
         "xcorr": xc,
-        "event_study": {k: v for k, v in studies.items() if v is not None},
+        "event_study": slots["event_study"],
+        "event_study_notes": slots["event_study_notes"],
         "checklist": rows,
         "details": {
+            "event_study_counts": slots["event_study_counts"],
             "primary": core.reg.as_dict(),
             "no_control": core.reg_nocontrol.as_dict(),
             "xlu_placebo": core.xlu.as_dict() if core.xlu else None,
             "placebo_shift_reported_only": core.placebo_shift,
             "robustness": core.robustness,
-            "exploratory": {k: v.as_dict() for k, v in core.exploratory.items()},
+            "exploratory": {k: {**v.as_dict(), **note} for k, v in core.exploratory.items()},
             **extra,
         },
     }
@@ -252,6 +314,7 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
 
 def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> dict:
     rows, head = _common(facts, bh)
+    slots = study_slots(studies)
     t = core.test
     v = core.validation
     plc = core.placebo
@@ -290,25 +353,30 @@ def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict
         ),
         _row(
             "Placebo",
-            "Not run" if plc is None else ("Passed" if plc["passes"] else "Failed"),
-            "Link vanishes on random non-release days",
+            _relative_placebo_status(None if plc is None else plc["passes"], facts),
+            "Link vanishes on random non-release days (only needed when the main test passes)",
             ""
             if plc is None
             else f"release rho {_fmt(plc['release_rho'])} vs 10th percentile "
-            f"{_fmt(plc['p10_of_placebo_rho'])} of {plc['n_sets']} random sets",
+            f"{_fmt(plc['p10_of_placebo_rho'])} of {plc['n_sets']} random sets (passes: "
+            f"{'yes' if plc['passes'] else 'no'}; gates the verdict only when the primary is "
+            "significant, prereg A28)",
         ),
         *rows,
     ]
     return {
         "pair_id": "us_cpi_inflation",
+        "primary_ticker": "TLT",
         **head,
         "stocks_first": None,
         "n_events": core.n_usable,
         "params": PARAMS,
         "xcorr": NOT_IN_PLAN,
-        "event_study": {k: v for k, v in studies.items() if v is not None},
+        "event_study": slots["event_study"],
+        "event_study_notes": slots["event_study_notes"],
         "checklist": rows,
         "details": {
+            "event_study_counts": slots["event_study_counts"],
             "usable_releases": core.n_usable,
             "validation": v.__dict__,
             "primary": t.as_dict() if t else None,
@@ -363,6 +431,7 @@ def recession_result(main: dict, sensitivity: dict) -> dict:
     ]
     return {
         "pair_id": "us_recession",
+        "primary_ticker": "IWM-SPY",
         "verdict": label,
         "verdict_reason": reason,
         "confidence": {"level": level, "reason": why},

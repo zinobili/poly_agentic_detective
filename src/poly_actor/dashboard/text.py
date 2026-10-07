@@ -56,6 +56,7 @@ from .wording import (
     STATUS_ICON,
     TICKER_PLAIN,
     VERDICT_SENTENCE,
+    VERDICT_SO_WHAT,
 )
 
 __all__ = [
@@ -294,30 +295,36 @@ def event_study_for(results: PairResults | None, ticker: str) -> EventStudy | No
     return results.event_study.get(ticker) if results and results.event_study else None
 
 
-def verdict_sentence(pair_id: str, results: PairResults, ticker: str) -> str:
+def verdict_sentence(pair_id: str, results: PairResults) -> str:
+    """The pre-registered verdict in words, about the pair's primary stock only."""
     info = pair_info(pair_id)
-    template = VERDICT_SENTENCE[results.verdict]
-    return template.format(odds=info.odds, odds_mid=info.odds_mid, stock=ticker_label(ticker))
+    ticker = results.primary_ticker
+    stock = ticker_label(ticker) if ticker else "related stocks"
+    return VERDICT_SENTENCE[results.verdict].format(
+        odds=info.odds, odds_mid=info.odds_mid, stock=stock
+    )
 
 
-def finding(pair_id: str, results: PairResults | None, ticker: str) -> str:
-    """One-sentence finding for the scorecard and the verdict panel title."""
+def finding(pair_id: str, results: PairResults | None) -> str:
+    """Headline of the scorecard and the verdict panel: the pre-registered verdict for the
+    primary stock, never an exploratory chart (validator r1 M1)."""
     if results is None or results.verdict is None:
-        xc = xcorr_for(results, ticker)
-        return NOT_RUN if xc is None else xcorr_title(pair_id, xc, is_preview(results))
-    xc = xcorr_for(results, ticker)
-    if xc is not None:
-        return xcorr_title(pair_id, xc, is_preview(results))
-    return preview_title(verdict_sentence(pair_id, results, ticker), is_preview(results))
+        return NOT_RUN
+    return preview_title(verdict_sentence(pair_id, results), is_preview(results))
 
 
-def so_what(results: PairResults | None, ticker: str) -> str:
-    xc = xcorr_for(results, ticker)
-    if xc is not None:
-        return xcorr_so_what(xc)
-    if results is not None and results.verdict_reason:
-        return results.verdict_reason
-    return NOTHING_TO_CONCLUDE
+def so_what(results: PairResults | None) -> str:
+    """Verdict-panel "so what", read from the verdict only."""
+    if results is None or results.verdict is None:
+        return NOTHING_TO_CONCLUDE
+    return VERDICT_SO_WHAT[results.verdict]
+
+
+def event_study_note(results: PairResults | None, ticker: str) -> str | None:
+    """Why chart 2 is missing for a ticker (e.g. too few signed events), if the results say."""
+    if results is None or not results.event_study_notes:
+        return None
+    return results.event_study_notes.get(ticker)
 
 
 def chart1_state(results: PairResults | None, ticker: str) -> str:

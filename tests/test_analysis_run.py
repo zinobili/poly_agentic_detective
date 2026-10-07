@@ -82,6 +82,40 @@ def test_verdict_and_confidence_are_computed_not_typed(written):
         assert row["status"] == ("Passed" if fam[pid]["reject"] else "Failed")
 
 
+def test_a29_btc_publication(written):
+    """Prereg A29 items 1-4 on the written results."""
+    clean, docs, summary = written
+    btc = docs["bitcoin_monthly_ladder"]
+    assert (btc["verdict"], btc["verdict_reason"]) == (verdict.TOO_EARLY, verdict.A29_REASON)
+    assert btc["confidence"]["level"] == "Low"
+    assert btc["verdict_if_a27_rule3_read_literally"] in VERDICTS
+    blob = json.dumps(btc["checklist"]) + btc["verdict_reason"]
+    assert "Failed (opposite sign)" not in blob and "rule out" not in blob
+    status = {r["name"]: r["status"] for r in btc["checklist"]}
+    assert status["Primary test"] == status["Beyond Bitcoin's own price"] == verdict.NOT_VALID
+    for tk, x in btc["xcorr"].items():
+        noted = x["residualised"].get("note") == verdict.A29_NOTE
+        assert noted == (tk in verdict.A29_CHART1_TICKERS), tk
+    assert all("note" not in {k for k in x if k != "residualised"} for x in btc["xcorr"].values())
+    noted = {r["test"] for r in summary["exploratory_family"] if "note" in r}
+    assert noted == set(run.A29_EXPLORATORY)
+    assert {r["pair_id"] for r in summary["primary_family"]} == set(run.PRIMARY_ORDER)
+    res = load_results(clean, "bitcoin_monthly_ladder")
+    assert res.primary_ticker == "IBIT" and res.xcorr["IBIT"].residualised.note
+    for pid in ("fed_decision", "us_cpi_inflation", "us_recession"):
+        assert "verdict_if_a27_rule3_read_literally" not in docs[pid]
+
+
+def test_primary_ticker_is_written_for_every_pair(written):
+    _, docs, _ = written
+    assert {p: docs[p]["primary_ticker"] for p in PAIRS} == {
+        "fed_decision": "TLT",
+        "bitcoin_monthly_ladder": "IBIT",
+        "us_cpi_inflation": "TLT",
+        "us_recession": "IWM-SPY",
+    }
+
+
 # ---------------------------------------------------------------- row 11: pair 4
 
 
@@ -185,4 +219,5 @@ def test_dashboard_renders_all_four_pairs(written, monkeypatch, tmp_path):
         if pid in ("us_cpi_inflation", "us_recession"):
             assert "Not part of the plan" in body
         assert "Why this verdict: " + docs[pid]["verdict_reason"] in body
+        assert "work like a mirror" not in body and "so neither gets a head start" not in body
     assert seen == set(PAIRS)

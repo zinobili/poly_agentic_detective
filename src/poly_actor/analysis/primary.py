@@ -222,7 +222,7 @@ def btc_robustness(grid: SessionGrid, grid_age900: SessionGrid, controls: np.nda
     out = {
         "R1_session_cluster": {**r1.as_dict(), "holds": holds(r1, sign)},
         "R2_drop_top1pct": {**r2.as_dict(), "holds": holds(r2, sign), "n": d2.n_rows},
-        "R3_drop_event_sessions": {"holds": True, "note": "Fed only (A27 rule 10)"},
+        "R3_drop_event_sessions": {"holds": None, "note": "not applicable: Fed only (A27 rule 10)"},
         "age900_reported_only": {
             **age.tests["lag1"].as_dict(),
             "n": age.n,

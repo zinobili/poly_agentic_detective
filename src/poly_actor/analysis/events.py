@@ -139,6 +139,20 @@ class EventStudyOut:
         return out
 
 
+@dataclass(frozen=True)
+class TooFewEvents:
+    """Why no chart was drawn: fewer than MIN_EVENTS usable events (A27 rule 13 counts)."""
+
+    n_candidates: int
+    n_used: int
+    n_unsigned: int  # odds change before bar 0 below the signing threshold
+    n_dropped: int  # missing prices in the window, or a different step layout
+    min_events: int = MIN_EVENTS
+
+    def as_dict(self) -> dict:
+        return dict(self.__dict__)
+
+
 def _list(a: np.ndarray) -> list[float]:
     return [float(v) for v in np.asarray(a, dtype="float64")]
 

@@ -82,7 +82,7 @@ CHECKLIST_ROWS = (
     "Odds help predict prices beyond their own past",
     "Link vanishes when timing is scrambled",
     "Holds after the many-pairs correction",
-    "Enough cases to be sure",
+    "Enough data for the test",
 )
 STATUS_ICON = {
     "Passed": "✓",
@@ -91,6 +91,7 @@ STATUS_ICON = {
     "Weak": "!",
     "Not needed": "–",
     "Not run": "·",
+    "Not valid": "⚠",
 }
 
 VERDICT_SENTENCE = {
@@ -100,6 +101,22 @@ VERDICT_SENTENCE = {
     "No extra information": "{odds} only echo Bitcoin's own price, so they add nothing",
     "Too early to tell": "Too early to tell whether {odds_mid} move before {stock}",
     "Descriptive only": "A description of how {stock} moved on the biggest days for {odds_mid}",
+}
+
+# "So what" of the verdict panel, by verdict. It reads the pre-registered verdict only; the
+# exploratory charts never feed the headline (validator r1 M1).
+VERDICT_SO_WHAT = {
+    "Polymarket moves first": "This is the kind of early signal we're looking for. Check how "
+    "sure we are below before relying on it.",
+    "Moves at the same time": "The odds and the stock react together, so the odds give no "
+    "early warning.",
+    "No head start": "In this data the odds gave no early warning. A lead big enough to be "
+    "useful would most likely have shown up.",
+    "No extra information": "The odds add nothing to what Bitcoin's own price already tells you.",
+    "Too early to tell": "There is no reliable answer yet, so don't use the odds for timing on "
+    "the strength of this.",
+    "Descriptive only": "This shows what happened on the biggest days. It is a description, "
+    "not a test.",
 }
 
 COUNTS = (

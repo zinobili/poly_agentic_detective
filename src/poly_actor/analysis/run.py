@@ -25,13 +25,23 @@ import pandas as pd
 
 from poly_actor.align import pipeline
 from poly_actor.analysis import cpi as cpi_mod
-from poly_actor.analysis import inputs, models, primary, results, runners, sample, studies
+from poly_actor.analysis import (
+    inputs,
+    models,
+    primary,
+    results,
+    runners,
+    sample,
+    studies,
+    verdict,
+)
 from poly_actor.analysis.verdict import BH_Q
 from poly_actor.config import CLEAN_DIR
 
 log = logging.getLogger(__name__)
 
 PRIMARY_ORDER = ("fed_decision", "bitcoin_monthly_ladder", "us_cpi_inflation")
+A29_EXPLORATORY = ("btc_COIN_lag1", "btc_MSTR_lag1", "btc_IBIT_lag2", "btc_IBIT_lag3")
 
 
 @dataclass
@@ -43,6 +53,7 @@ class Job:
     studies: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
     exploratory: dict[str, float] = field(default_factory=dict)  # name -> two-sided p
+    exploratory_notes: dict[str, str] = field(default_factory=dict)  # name -> caveat
     doc: dict | None = None  # pair 4 is complete after phase 1
 
 
@@ -99,7 +110,7 @@ def fed_job(panel: pd.DataFrame, days: Mapping[str, set[date]]) -> Job:
             studies.FED_WINDOW,
             fold=False,
         )
-        st[t] = results.event_json(out)
+        st[t] = out
     night = primary.overnight_test(primary.overnight_frame(panel, "TLT", -1.0), 1e4)
     exploratory = {
         "fed_SPY_sum": core.secondary["SPY"].tests["sum"].p_two,
@@ -131,7 +142,7 @@ def btc_job(panel: pd.DataFrame, spot_at: Callable[[np.ndarray], np.ndarray]) ->
         y = primary.residualise(grid.returns[t], controls)
         gaps = _residual_gap(session_values(panel, grid, f"overnight_gap_{t}"), spot_gap)
         out = studies.bar_study(grid, y, gaps, bar0s, pool, 0.0, studies.BTC_WINDOW, fold=True)
-        st[t] = results.event_json(out)
+        st[t] = out
     frame = primary.overnight_frame(panel, "IBIT", 1.0)
     gap_by_session = dict(zip(grid.sessions, spot_gap, strict=True))
     ctrl = frame["session"].map(gap_by_session).to_numpy(dtype="float64")
@@ -152,7 +163,9 @@ def btc_job(panel: pd.DataFrame, spot_at: Callable[[np.ndarray], np.ndarray]) ->
         "overnight_IBIT": night,
         "overnight_IBIT_spot_control": night_c,
     }
-    return Job(pid, core, st, extra, exploratory)
+    # Prereg A29 item 3: these use the same misaligned spot control as the primary.
+    notes = {n: verdict.A29_NOTE for n in A29_EXPLORATORY}
+    return Job(pid, core, st, extra, exploratory, notes)
 
 
 def _spot_gap(panel, grid, spot_at) -> np.ndarray:
@@ -209,7 +222,7 @@ def cpi_job(panel: pd.DataFrame, tab: pd.DataFrame, placebo_tab: pd.DataFrame | 
     pool_days = set(placebo_tab["session"]) if placebo_tab is not None else set()
     pool_idx = session_index(grid, pool_days)
     st = {
-        t: results.event_json(studies.cpi_study(grid, grid.returns[t], gap[t], rel_idx, pool_idx))
+        t: studies.cpi_study(grid, grid.returns[t], gap[t], rel_idx, pool_idx)
         for t in ("TLT", "QQQ")
     }
     extra = {
@@ -241,6 +254,7 @@ def assemble(jobs: dict[str, Job]) -> tuple[dict[str, dict], dict]:
     reject, adj = models.bh(p_primary, BH_Q)
     family = "the three primary tests (Fed, Bitcoin, inflation)"
     exp_names = [n for j in jobs.values() for n in j.exploratory]
+    exp_notes = {n: t for j in jobs.values() for n, t in j.exploratory_notes.items()}
     exp_p = [j.exploratory[n] for j in jobs.values() for n in j.exploratory]
     exp_p = [1.0 if (p is None or not np.isfinite(p)) else p for p in exp_p]
     exp_rej, exp_adj = models.bh(exp_p, BH_Q) if exp_p else (np.array([]), np.array([]))
@@ -250,7 +264,13 @@ def assemble(jobs: dict[str, Job]) -> tuple[dict[str, dict], dict]:
             for pid, p, a, r in zip(PRIMARY_ORDER, p_primary, adj, reject, strict=True)
         ],
         "exploratory_family": [
-            {"test": n, "p_two_sided": p, "bh_adjusted": float(a), "reject": bool(r)}
+            {
+                "test": n,
+                "p_two_sided": p,
+                "bh_adjusted": float(a),
+                "reject": bool(r),
+                **({"note": exp_notes[n]} if n in exp_notes else {}),
+            }
             for n, p, a, r in zip(exp_names, exp_p, exp_adj, exp_rej, strict=True)
         ],
         "q": BH_Q,

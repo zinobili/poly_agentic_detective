@@ -145,7 +145,12 @@ def btc_core(
     return BtcCore(reg, reg_nc, xlu, plc, rob, raw, resid, exp)
 
 
-def btc_facts(core: BtcCore, bh_reject: bool, bh_q: float) -> Facts:
+def btc_facts(
+    core: BtcCore, bh_reject: bool, bh_q: float, spot_control_misaligned: bool = True
+) -> Facts:
+    """`spot_control_misaligned` (prereg A29): True for the pre-registered control built by
+    `primary.spot_controls` from hourly closes, which biases the primary; synthetic tests with
+    bar-aligned controls pass False."""
     t = core.reg.tests["lag1"]
     ok, note = sufficiency(core.reg.n, core.reg.n_sessions)
     xlu_p = core.xlu.tests["lag1"].p_two if core.xlu else None
@@ -166,6 +171,7 @@ def btc_facts(core: BtcCore, bh_reject: bool, bh_q: float) -> Facts:
         lower_r=t.r_lower,
         nocontrol_p=core.reg_nocontrol.tests["lag1"].p_one,
         robust_hold=core.robustness["all_hold"] if core.robustness else None,
+        control_misaligned=spot_control_misaligned,
     )
 
 

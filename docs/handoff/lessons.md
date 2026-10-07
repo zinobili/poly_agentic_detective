@@ -22,6 +22,8 @@ Every bug class an independent validator has caught so far. Builders self-check 
 - **Normalize bucket probabilities by Σp.** Handle open-ended edge buckets explicitly.
 - **Ladders must be monotone,** with one rung per strike per hour. A touched strike implies every strike beyond it is touched too (dip: every higher strike; up: every lower strike).
 - **Closed-market hours create fake leads.** Test only on hours when both sides trade.
+- **Controls must cover the same clock window as the outcome.** A stale or coarse control (hourly closes read at :30, or clock-hour lags on a 30-min bar) creates suppressor coefficients: zero-information odds get a strongly negative coefficient (step 6 B1, prereg A29). Test any control with sub-hour timing, not bar-aligned iid data.
+- **Headlines come from the pre-registered verdict for the primary stock,** never from an exploratory chart or the first-listed ticker.
 
 ## Process
 - **Write rules as 2–3 concrete input → expected-output examples** and turn them into tests. Prose rules got inverted twice.

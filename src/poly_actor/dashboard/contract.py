@@ -8,6 +8,7 @@ Shape (schema 2; timestamps ISO-8601, tz-aware UTC)::
 
     {
       "pair_id": "fed_decision",
+      "primary_ticker": "TLT",                       # the pre-registered test's stock
       "verdict": one of VERDICTS, "verdict_reason": "...",
       "confidence": {"level": one of CONFIDENCE_LEVELS, "reason": "..."},
       "stocks_first": true|false|null,               # exploratory label (A27 rule 8)
@@ -16,7 +17,8 @@ Shape (schema 2; timestamps ISO-8601, tz-aware UTC)::
       "xcorr": "not_in_plan"                          # CPI, recession: no hourly lead-lag
              | {"TLT": {"lags": [-6..6], "r": [...], "band": 3.1,    # scalar band
                         "t": [...], "band_stat": "robust_t",          # A28: band on |t|
-                        "residualised": {"lags", "r", "t", "band", "band_stat"}}},  # BTC
+                        "residualised": {"lags", "r", "t", "band", "band_stat",
+                                         "note"}}},  # BTC; note = caveat (A29)
       "event_study": {"TLT": {"unit": "bars|days", "steps": ["-3", ..., "gap", ...],
                               "mean", "ci_low", "ci_high",            # percent, per step
                               "band_low", "band_high",                # optional random dates
@@ -24,6 +26,7 @@ Shape (schema 2; timestamps ISO-8601, tz-aware UTC)::
                               "label": "...", "compare": {"label", "mean", "ci_low",
                               "ci_high"},                             # optional
                               "n_unsigned": 0, "event_times": [...]}},
+      "event_study_notes": {"TLT": "Too few events to draw this chart: ..."},  # optional
       "checklist": [{"name", "status": one of STATUSES, "plain", "technical"}]
     }
 """
@@ -41,7 +44,15 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-STATUSES = ("Passed", "Failed", "Failed (opposite sign)", "Weak", "Not needed", "Not run")
+STATUSES = (
+    "Passed",
+    "Failed",
+    "Failed (opposite sign)",
+    "Weak",
+    "Not needed",
+    "Not run",
+    "Not valid",  # the test ran but is biased by construction (prereg A29)
+)
 VERDICTS = (
     "Polymarket moves first",
     "Moves at the same time",
@@ -63,6 +74,7 @@ class XCorr:
     band: float  # simultaneous noise band (scalar), in the units of `stat`
     residualised: XCorr | None = None  # BTC: returns net of Bitcoin's own price
     t: tuple[float, ...] | None = None  # robust t per lag; the band applies to it (A28 item 1)
+    note: str | None = None  # caveat: the panel is shown but not read as evidence (A29)
 
     @property
     def stat(self) -> tuple[float, ...]:
@@ -123,6 +135,8 @@ class PairResults:
     n_events: int | None = None
     stocks_first: bool | None = None
     params: dict[str, Any] = field(default_factory=dict)
+    primary_ticker: str | None = None  # the stock of the pre-registered test
+    event_study_notes: dict[str, str] | None = None  # by ticker: why chart 2 is missing
 
 
 def results_path(clean_dir: Path, pair_id: str) -> Path:
@@ -162,7 +176,16 @@ def parse_results(raw: dict[str, Any]) -> PairResults:
         n_events=_count(raw.get("n_events")),
         stocks_first=stocks_first if isinstance(stocks_first, bool) else None,
         params=raw.get("params") if isinstance(raw.get("params"), dict) else {},
+        primary_ticker=_text(raw.get("primary_ticker")),
+        event_study_notes=_notes(raw.get("event_study_notes")),
     )
+
+
+def _notes(raw: Any) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+    out = {str(k): _text(v) for k, v in raw.items()}
+    return {k: v for k, v in out.items() if v} or None
 
 
 def _by_ticker(raw: Any, parse: Callable[[str, Any], Any], slot: str) -> dict[str, Any] | None:
@@ -229,6 +252,7 @@ def _plain_xcorr(ticker: str, raw: Any) -> XCorr | None:
         tuple(r[i] for i in order),
         band[0],
         t=None if t is None else tuple(t[i] for i in order),
+        note=_text(raw.get("note")),
     )
 
 
@@ -242,7 +266,7 @@ def _xcorr(ticker: str, raw: Any) -> XCorr | None:
     parsed = _plain_xcorr(ticker, resid)
     if parsed is None:
         return None
-    return XCorr(base.ticker, base.lags, base.r, base.band, parsed, base.t)
+    return XCorr(base.ticker, base.lags, base.r, base.band, parsed, base.t, base.note)
 
 
 def _event_times(values: Any) -> tuple[datetime, ...] | None:
