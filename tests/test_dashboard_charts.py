@@ -81,7 +81,42 @@ def test_xcorr_figure_colours_bars_by_noise_zone():
 
 
 def test_event_study_figure_has_band_and_mean():
-    es = EventStudy("TLT", (0, 1), (0.1, 0.2), (0.0, 0.1), (0.2, 0.3), ())
+    es = EventStudy("TLT", ("0", "+1"), (0.1, 0.2), (0.0, 0.1), (0.2, 0.3), ())
     fig = charts.event_study_figure(es)
     assert [t.name for t in fig.data] == [None, "Plausible range", "Average move"]
     assert fig.layout.yaxis.title.text == "TLT move (%)"
+
+
+def test_event_study_figure_marks_the_gap_and_draws_paths_and_band():
+    steps = ("-1", "0", "gap", "+1")
+    es = EventStudy(
+        "TLT",
+        steps,
+        (0.0, 0.1, 0.2, 0.3),
+        (-0.1, 0.0, 0.1, 0.2),
+        (0.1, 0.2, 0.3, 0.4),
+        (),
+        band_low=(-0.2,) * 4,
+        band_high=(0.2,) * 4,
+        paths=((0.0, 0.2, 0.3, 0.1), (0.1, 0.0, 0.1, 0.5)),
+        gap_marks=((), ()),
+    )
+    fig = charts.event_study_figure(es)
+    names = [t.name for t in fig.data]
+    assert "Ordinary days" in names and names.count("Each event") == 2
+    assert list(fig.data[-1].x) == list(steps)  # categorical steps, gap between bars
+    assert any(s.x0 == 2 for s in fig.layout.shapes)  # dotted line at the gap step
+
+
+def test_chart3_bitcoin_spot_does_not_break_overnight():
+    hours = pd.date_range("2025-03-14 00:00", periods=72, freq="h", tz="UTC")
+    panel = pd.DataFrame(
+        {
+            "ts_end": hours,
+            "is_session_bar": hours.hour.isin(range(14, 21)),
+            "ret_BTC-USD": 0.001,
+        }
+    )
+    series = charts.stock_index_series(panel, "BTC-USD")
+    assert len(series) == 72
+    assert charts.break_gaps(series["x"], series["y"])["y"].isna().sum() == 0

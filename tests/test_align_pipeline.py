@@ -151,3 +151,17 @@ def test_corrupt_summary_error_names_the_path(tmp_path):
     (tmp_path / cli.SUMMARY_NAME).write_text("{not json")
     with pytest.raises(ValueError, match="align_summary.json"):
         cli._read_summary(tmp_path)
+
+
+def test_summary_lock_waits_with_the_injected_sleep_until_released(tmp_path):
+    lock = tmp_path / (cli.SUMMARY_NAME + ".lock")
+    lock.write_text("")
+    calls = []
+
+    def fake_sleep(seconds):  # the other run finishes while we wait
+        calls.append(seconds)
+        lock.unlink()
+
+    with cli._summary_lock(tmp_path, timeout_s=5.0, sleep=fake_sleep):
+        assert lock.exists()  # now held by us
+    assert calls == [cli.LOCK_POLL_S] and not lock.exists()

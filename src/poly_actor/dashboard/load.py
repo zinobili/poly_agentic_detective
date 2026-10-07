@@ -5,6 +5,7 @@ Timezone: every panel timestamp is tz-aware UTC (hourly grid, session bars are 3
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,9 @@ import yaml
 
 from poly_actor.config import CONFIG_DIR
 
-from .contract import PairResults, load_results
+from .contract import PairResults, load_results, results_path
+
+log = logging.getLogger(__name__)
 
 try:  # the C loader is ~10x faster on the 4k-line pairs file
     from yaml import CSafeLoader as _Loader
@@ -26,17 +29,21 @@ PAIRS_FILE = CONFIG_DIR / "pairs.yaml"
 
 @dataclass(frozen=True)
 class PairSpec:
+    """A pair id and its tickers, in pairs-file order."""
+
     pair_id: str
     tickers: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class Coverage:
-    first: datetime
-    last: datetime
-    rows: int
-    both_trading_rows: int
-    median_quote_age_s: float | None
+    """Observed facts about a panel. Times are tz-aware UTC; ages are in seconds."""
+
+    first: datetime  # first row end (UTC)
+    last: datetime  # last row end (UTC)
+    rows: int  # panel rows (hourly windows)
+    both_trading_rows: int  # session bars where both markets trade
+    median_quote_age_s: float | None  # seconds, on both-trading rows
 
 
 def load_pair_specs(path: Path = PAIRS_FILE) -> tuple[PairSpec, ...]:
@@ -46,13 +53,28 @@ def load_pair_specs(path: Path = PAIRS_FILE) -> tuple[PairSpec, ...]:
 
 
 def load_panel(clean_dir: Path, pair_id: str) -> pd.DataFrame | None:
-    """The aligned hourly panel for a pair, or ``None`` if it has not been built."""
+    """The aligned hourly panel for a pair, or ``None`` if it is missing or unreadable."""
     path = clean_dir / f"panel_{pair_id}.parquet"
-    return pd.read_parquet(path) if path.is_file() else None
+    if not path.is_file():
+        return None
+    try:
+        return pd.read_parquet(path)
+    except (OSError, ValueError) as exc:  # pyarrow's ArrowInvalid is a ValueError
+        log.warning("Ignoring unreadable panel %s: %s", path, exc)
+        return None
 
 
 def load_all_results(clean_dir: Path, specs: tuple[PairSpec, ...]) -> dict[str, PairResults | None]:
+    """Every pair's results (``None`` where missing or malformed), keyed by pair id."""
     return {s.pair_id: load_results(clean_dir, s.pair_id) for s in specs}
+
+
+def results_signature(clean_dir: Path) -> tuple[tuple[str, int], ...]:
+    """(file name, mtime in ns) of every results file: a cache key that changes on rewrite."""
+    folder = results_path(clean_dir, "any").parent
+    if not folder.is_dir():
+        return ()
+    return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in folder.glob("*.json")))
 
 
 def panel_coverage(panel: pd.DataFrame) -> Coverage | None:

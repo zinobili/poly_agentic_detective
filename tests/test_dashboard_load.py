@@ -24,7 +24,7 @@ FULL = {
     "xcorr": {"TLT": {"lags": list(LAGS), "r": [0.0] * 25, "band": 0.05}},
     "event_study": {
         "TLT": {
-            "hours": [-1, 0, 1],
+            "steps": ["-1", "0", "+1"],
             "mean": [0.0, 0.1, 0.2],
             "ci_low": [-0.1, 0.0, 0.1],
             "ci_high": [0.1, 0.2, 0.3],
@@ -106,6 +106,26 @@ def test_unsorted_lags_are_sorted():
     assert xc.lags == (0, 1) and xc.r == (0.1, 0.5)
 
 
+def test_robust_t_band_is_parsed_and_sorted_with_the_lags():
+    """A28 item 1: band_stat "robust_t" carries a t per lag, sorted with the lags."""
+    raw = {"lags": [1, 0], "r": [0.5, 0.1], "t": [2.0, 1.0], "band": 3.0, "band_stat": "robust_t"}
+    xc = parse_results({"pair_id": "p", "xcorr": {"T": raw}}).xcorr["T"]
+    assert xc.t == (1.0, 2.0) and xc.stat == (1.0, 2.0) and xc.r == (0.1, 0.5)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"t": [1.0], "band_stat": "robust_t"},  # wrong length
+        {"band_stat": "robust_t"},  # t missing
+        {"t": [1.0, 2.0], "band_stat": "z"},  # unknown statistic
+    ],
+)
+def test_bad_robust_t_entries_are_rejected(bad):
+    raw = {"lags": [1, 0], "r": [0.5, 0.1], "band": 3.0, **bad}
+    assert parse_results({"pair_id": "p", "xcorr": {"T": raw}}).xcorr is None
+
+
 def test_pair_specs_from_real_pairs_file():
     specs = {s.pair_id: s.tickers for s in load_pair_specs()}
     assert specs["fed_decision"] == ("TLT", "SPY", "XLF")
@@ -139,3 +159,10 @@ def test_bad_entries_are_logged(caplog):
     with caplog.at_level(logging.WARNING):
         parse_results({"pair_id": "p", "xcorr": {"TLT": {"lags": [0], "r": [float("nan")]}}})
     assert "invalid xcorr entry for TLT" in caplog.text
+
+
+def test_corrupt_panel_is_none_and_names_the_path(tmp_path, caplog):
+    (tmp_path / "panel_fed_decision.parquet").write_bytes(b"not a parquet file")
+    with caplog.at_level(logging.WARNING):
+        assert load_panel(tmp_path, "fed_decision") is None
+    assert "panel_fed_decision.parquet" in caplog.text
