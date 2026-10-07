@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from .chart_text import (  # re-exported: the app and tests read them via `text`
     XcorrShape,
@@ -35,6 +34,7 @@ from .contract import (
     Confidence,
     EventStudy,
     PairResults,
+    Params,
     XCorr,
 )
 from .wording import (
@@ -43,6 +43,7 @@ from .wording import (
     COUNTS,
     DOES_NOT_COUNT,
     FOOTER,
+    GLOSSARY,
     NOT_COMPUTED_NOTE,
     NOT_IN_PLAN,
     NOT_IN_PLAN_NOTE,
@@ -105,7 +106,7 @@ def ticker_chip(ticker: str) -> str:
 # ---------------------------------------------------------------- glossary
 
 
-def params_of(results: Results) -> dict[str, Any]:
+def params_of(results: Results) -> Params:
     """Analysis parameters as written by the analysis (first pair that has them)."""
     for r in results.values():
         if r is not None and r.params:
@@ -113,73 +114,32 @@ def params_of(results: Results) -> dict[str, Any]:
     return {}
 
 
-def glossary(params: dict[str, Any]) -> tuple[tuple[str, str, str], ...]:
+def glossary(params: Params) -> tuple[tuple[str, str, str], ...]:
     """(term, plain words, technical term). Numbers come from the results, never from here."""
     lags = params.get("xcorr_lags")
     band = params.get("band_level")
     ci = params.get("ci_level")
     q = params.get("bh_q")
     draws = params.get("event_band_draws")
-    gaps = (
-        f"Comparing the two series at time gaps from {abs(lags[0])} hours one way to {lags[1]} "
-        "hours the other."
-        if lags
-        else "Comparing the two series at several time gaps."
-    )
-    return (
-        (
-            "Odds",
-            "Polymarket's price for a yes/no outcome, read as a crowd-estimated probability.",
-            "analysis uses changes in the Polymarket signal, never levels",
-        ),
-        (
-            "Who moves first",
-            gaps,
+    plain: dict[str, str] = {}
+    tech: dict[str, str] = {}
+    if lags:
+        plain["Who moves first"] = (
+            f"Comparing the two series at time gaps from {abs(lags[0])} hours one way to "
+            f"{lags[1]} hours the other."
+        )
+        tech["Who moves first"] = (
             f"lead-lag cross-correlation, lags {lags[0]} to +{lags[1]} session bars"
-            if lags
-            else "lead-lag cross-correlation",
-        ),
-        ("Link strength", "From -1 to 1. Zero means no link.", "Pearson correlation"),
-        (
-            "Noise zone",
-            "The range that pure chance would produce at any of the time gaps.",
-            f"simultaneous {band:.0%} band from session-shifted data"
-            if band
-            else "simultaneous band from session-shifted data",
-        ),
-        (
-            "Shaded range",
-            "Where the true average plausibly lies. If it includes zero, the effect could be "
-            "chance.",
-            f"{ci:.0%} confidence interval (BCa bootstrap)" if ci else "confidence interval",
-        ),
-        (
-            "Ordinary-day band",
-            "What the same chart looks like on randomly picked days without the event.",
-            f"random-date band, {draws} draws" if draws else "random-date band",
-        ),
-        (
-            "Beyond its own price",
-            "Do the odds add anything once we know what Bitcoin itself just did?",
-            "regression with BTC-USD returns as controls",
-        ),
-        (
-            "Scrambled-timing test",
-            "Rerun with the timing shuffled. A real signal should vanish.",
-            "placebo test",
-        ),
-        (
-            "Many-pairs correction",
-            "Raises the bar because we test several pairs at once.",
-            f"Benjamini-Hochberg false discovery rate, q = {q}" if q else "Benjamini-Hochberg",
-        ),
-        (
-            "Control asset",
-            "A stock that should have no link, used to check that the method isn't inventing "
-            "patterns.",
-            "negative control",
-        ),
-    )
+        )
+    if band:
+        tech["Noise zone"] = f"simultaneous {band:.0%} band from session-shifted data"
+    if ci:
+        tech["Shaded range"] = f"{ci:.0%} confidence interval (BCa bootstrap)"
+    if draws:
+        tech["Ordinary-day band"] = f"random-date band, {draws} draws"
+    if q:
+        tech["Many-pairs correction"] = f"Benjamini-Hochberg false discovery rate, q = {q}"
+    return tuple((term, plain.get(term, p), tech.get(term, t)) for term, p, t in GLOSSARY)
 
 
 # ---------------------------------------------------------------- banner, headline, tally

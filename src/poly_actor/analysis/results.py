@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import tempfile
 from pathlib import Path
+from typing import Any, TypedDict
 
 import numpy as np
 
@@ -16,11 +18,18 @@ from poly_actor.analysis import events as ev
 from poly_actor.analysis import placebo, verdict
 from poly_actor.analysis.runners import BtcCore, CpiCore, FedCore
 from poly_actor.analysis.verdict import Facts
+from poly_actor.dashboard.contract import (
+    CheckRowDoc,
+    ConfidenceDoc,
+    Params,
+    ResultsDoc,
+    XCorrDoc,
+)
 
 SCHEMA_VERSION = 2
 NOT_IN_PLAN = "not_in_plan"
 
-PARAMS = {
+PARAMS: Params = {
     "xcorr_lags": [min(placebo.XCORR_LAGS), max(placebo.XCORR_LAGS)],
     "lag_unit": "session bars (about 1 hour)",
     "band_level": placebo.BAND_QUANTILE,
@@ -42,11 +51,11 @@ def _fmt(v: float | None, digits: int = 3) -> str:
     return "n/a" if v is None or not math.isfinite(v) else f"{v:.{digits}g}"
 
 
-def _row(name: str, status: str, plain: str, technical: str) -> dict:
+def _row(name: str, status: str, plain: str, technical: str) -> CheckRowDoc:
     return {"name": name, "status": status, "plain": plain, "technical": technical}
 
 
-def xcorr_json(res: placebo.XcorrResult) -> dict:
+def xcorr_json(res: placebo.XcorrResult) -> XCorrDoc:
     return {
         "lags": list(res.lags),
         "r": [0.0 if math.isnan(v) else v for v in res.r],
@@ -60,7 +69,7 @@ def xcorr_json(res: placebo.XcorrResult) -> dict:
     }
 
 
-def event_json(out: ev.EventStudyOut | ev.TooFewEvents | None) -> dict | None:
+def event_json(out: ev.EventStudyOut | ev.TooFewEvents | None) -> dict[str, Any] | None:
     if not isinstance(out, ev.EventStudyOut):
         return None
     doc = out.as_contract("bars")
@@ -102,7 +111,19 @@ def _iso(epoch_s: int) -> str:
     return datetime.fromtimestamp(int(epoch_s), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _common(facts: Facts, bh: dict) -> tuple[list[dict], dict]:
+class _HeadBase(TypedDict):
+    verdict: str
+    verdict_reason: str
+    confidence: ConfidenceDoc
+    verdict_if_placebo_read_literally: str
+
+
+class _Head(_HeadBase, total=False):  # the A29 keys, BTC only
+    verdict_if_a27_rule3_read_literally: str
+    a29_note: str
+
+
+def _common(facts: Facts, bh: dict) -> tuple[list[CheckRowDoc], _Head]:
     label, reason = verdict.verdict(facts)
     literal, _ = verdict.verdict(facts, literal_placebo=True)
     level, why = verdict.confidence(facts)
@@ -121,7 +142,7 @@ def _common(facts: Facts, bh: dict) -> tuple[list[dict], dict]:
             facts.sufficiency_note,
         ),
     ]
-    head = {
+    head: _Head = {
         "verdict": label,
         "verdict_reason": reason,
         "confidence": {"level": level, "reason": why},
@@ -140,7 +161,7 @@ ROBUST_PLAIN = {
 }
 
 
-def _robust_row(rob: dict | None, facts: Facts) -> dict:
+def _robust_row(rob: dict | None, facts: Facts) -> CheckRowDoc:
     plain = ROBUST_PLAIN.get(facts.pair, "Holds in robustness checks")
     if rob is None:
         return _row("Robustness", "Not run", plain, "")
@@ -167,16 +188,51 @@ def _relative_placebo_status(passes: bool | None, facts: Facts) -> str:
     return "Passed" if passes else "Failed"
 
 
+# ---------------------------------------------------------------- shared skeleton
+
+
+def _base_doc(
+    pair: tuple[str, str],
+    facts: Facts,
+    bh: dict,
+    studies: dict,
+    *,
+    rows: list[CheckRowDoc],
+    tail: list[CheckRowDoc],
+    xcorr: dict[str, XCorrDoc] | str,
+    stocks_first: bool | None,
+    n_events: int | None,
+    details: dict[str, Any],
+    extra: dict,
+) -> ResultsDoc:
+    """The document every tested pair shares. ``pair`` is (pair_id, primary ticker); the
+    checklist is the pair's own ``rows``, then the common rows, then ``tail``; ``details``
+    follows the chart-2 counts and is followed by ``extra``."""
+    common, head = _common(facts, bh)
+    slots = study_slots(studies)
+    return {
+        "pair_id": pair[0],
+        "primary_ticker": pair[1],
+        **head,
+        "stocks_first": stocks_first,
+        "n_events": n_events,
+        "params": PARAMS,
+        "xcorr": xcorr,
+        "event_study": slots["event_study"],
+        "event_study_notes": slots["event_study_notes"],
+        "checklist": [*rows, *common, *tail],
+        "details": {"event_study_counts": slots["event_study_counts"], **details, **extra},
+    }
+
+
 # ---------------------------------------------------------------- Fed
 
 
-def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> dict:
+def _fed_rows(core: FedCore, facts: Facts) -> list[CheckRowDoc]:
     t = core.reg.tests["sum"]
     lead = core.reg.tests["lead"]
-    rows, head = _common(facts, bh)
-    slots = study_slots(studies)
     plc = core.placebo
-    rows = [
+    return [
         _row(
             "Primary test",
             verdict.primary_status(facts),
@@ -204,41 +260,36 @@ def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict
             f"{'yes' if facts.placebo_pass else 'no'}; gates the verdict only when the primary "
             "is significant, prereg A28)",
         ),
-        *rows,
-        _robust_row(core.robustness, facts),
     ]
-    xc = {tk: xcorr_json(r) for tk, r in core.xcorr.items()}
-    stocks_first = core.xcorr["TLT"].stocks_first if "TLT" in core.xcorr else None
-    return {
-        "pair_id": "fed_decision",
-        "primary_ticker": "TLT",
-        **head,
-        "stocks_first": stocks_first,
-        "n_events": extra.get("n_events"),
-        "params": PARAMS,
-        "xcorr": xc,
-        "event_study": slots["event_study"],
-        "event_study_notes": slots["event_study_notes"],
-        "checklist": rows,
-        "details": {
-            "event_study_counts": slots["event_study_counts"],
+
+
+def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> ResultsDoc:
+    return _base_doc(
+        ("fed_decision", "TLT"),
+        facts,
+        bh,
+        studies,
+        rows=_fed_rows(core, facts),
+        tail=[_robust_row(core.robustness, facts)],
+        xcorr={tk: xcorr_json(r) for tk, r in core.xcorr.items()},
+        stocks_first=core.xcorr["TLT"].stocks_first if "TLT" in core.xcorr else None,
+        n_events=extra.get("n_events"),
+        details={
             "primary": core.reg.as_dict(),
-            "placebo_shift": plc,
+            "placebo_shift": core.placebo,
             "robustness": core.robustness,
             "secondary": {k: v.as_dict() for k, v in core.secondary.items()},
-            **extra,
         },
-    }
+        extra=extra,
+    )
 
 
 # ---------------------------------------------------------------- BTC
 
 
-def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> dict:
+def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
     t = core.reg.tests["lag1"]
     nc = core.reg_nocontrol.tests["lag1"]
-    rows, head = _common(facts, bh)
-    slots = study_slots(studies)
     xlu = core.xlu.tests["lag1"] if core.xlu else None
     if facts.control_misaligned:  # A29: the with-control side of this row is biased
         beyond = verdict.NOT_VALID
@@ -247,7 +298,7 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
     else:
         beyond = verdict.primary_status(facts)
     a29 = f" Prereg A29: {verdict.A29_NOTE}" if facts.control_misaligned else ""
-    rows = [
+    return [
         _row(
             "Primary test",
             verdict.primary_status(facts),
@@ -274,47 +325,47 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
             f"{_fmt(xlu.ci_low)} to {_fmt(xlu.ci_high)}), two-sided p = {_fmt(xlu.p_two)} "
             "(passes if > 0.10)",
         ),
-        *rows,
-        _robust_row(core.robustness, facts),
     ]
-    note = {"note": verdict.A29_NOTE} if facts.control_misaligned else {}
-    xc = {}
+
+
+def _btc_xcorr(core: BtcCore, note: dict[str, str]) -> dict[str, XCorrDoc]:
+    xc: dict[str, XCorrDoc] = {}
     for tk, raw in core.xcorr_raw.items():
         resid = xcorr_json(core.xcorr_resid[tk])
         if tk in verdict.A29_CHART1_TICKERS:  # A29 item 3 names these three panels
             resid.update(note)
         xc[tk] = {**xcorr_json(raw), "residualised": resid}
-    stocks_first = core.xcorr_resid["IBIT"].stocks_first if "IBIT" in core.xcorr_resid else None
-    return {
-        "pair_id": "bitcoin_monthly_ladder",
-        "primary_ticker": "IBIT",
-        **head,
-        "stocks_first": stocks_first,
-        "n_events": extra.get("n_events"),
-        "params": PARAMS,
-        "xcorr": xc,
-        "event_study": slots["event_study"],
-        "event_study_notes": slots["event_study_notes"],
-        "checklist": rows,
-        "details": {
-            "event_study_counts": slots["event_study_counts"],
+    return xc
+
+
+def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> ResultsDoc:
+    note = {"note": verdict.A29_NOTE} if facts.control_misaligned else {}
+    return _base_doc(
+        ("bitcoin_monthly_ladder", "IBIT"),
+        facts,
+        bh,
+        studies,
+        rows=_btc_rows(core, facts),
+        tail=[_robust_row(core.robustness, facts)],
+        xcorr=_btc_xcorr(core, note),
+        stocks_first=core.xcorr_resid["IBIT"].stocks_first if "IBIT" in core.xcorr_resid else None,
+        n_events=extra.get("n_events"),
+        details={
             "primary": core.reg.as_dict(),
             "no_control": core.reg_nocontrol.as_dict(),
             "xlu_placebo": core.xlu.as_dict() if core.xlu else None,
             "placebo_shift_reported_only": core.placebo_shift,
             "robustness": core.robustness,
             "exploratory": {k: {**v.as_dict(), **note} for k, v in core.exploratory.items()},
-            **extra,
         },
-    }
+        extra=extra,
+    )
 
 
 # ---------------------------------------------------------------- CPI
 
 
-def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> dict:
-    rows, head = _common(facts, bh)
-    slots = study_slots(studies)
+def _cpi_rows(core: CpiCore, facts: Facts) -> list[CheckRowDoc]:
     t = core.test
     v = core.validation
     plc = core.placebo
@@ -325,7 +376,7 @@ def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict
         f"exact one-sided p = {_fmt(t.p_one)}, n = {t.n}; sign test {t.sign_negative} of "
         f"{t.sign_n} (p = {_fmt(t.sign_p)})"
     )
-    rows = [
+    return [
         _row(
             "Method check",
             "Passed" if v.passed else "Failed",
@@ -362,42 +413,43 @@ def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict
             f"{'yes' if plc['passes'] else 'no'}; gates the verdict only when the primary is "
             "significant, prereg A28)",
         ),
-        *rows,
     ]
-    return {
-        "pair_id": "us_cpi_inflation",
-        "primary_ticker": "TLT",
-        **head,
-        "stocks_first": None,
-        "n_events": core.n_usable,
-        "params": PARAMS,
-        "xcorr": NOT_IN_PLAN,
-        "event_study": slots["event_study"],
-        "event_study_notes": slots["event_study_notes"],
-        "checklist": rows,
-        "details": {
-            "event_study_counts": slots["event_study_counts"],
+
+
+def cpi_result(core: CpiCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> ResultsDoc:
+    t = core.test
+    return _base_doc(
+        ("us_cpi_inflation", "TLT"),
+        facts,
+        bh,
+        studies,
+        rows=_cpi_rows(core, facts),
+        tail=[],
+        xcorr=NOT_IN_PLAN,
+        stocks_first=None,
+        n_events=core.n_usable,
+        details={
             "usable_releases": core.n_usable,
-            "validation": v.__dict__,
+            "validation": core.validation.__dict__,
             "primary": t.as_dict() if t else None,
             "close_proxy": core.close_proxy.as_dict() if core.close_proxy else None,
             "robust_R2_drop_largest": core.robust_r2.as_dict() if core.robust_r2 else None,
-            "placebo_random_dates": plc,
-            **extra,
+            "placebo_random_dates": core.placebo,
         },
-    }
+        extra=extra,
+    )
 
 
 # ---------------------------------------------------------------- recession
 
 
-def recession_result(main: dict, sensitivity: dict) -> dict:
+def recession_result(main: dict, sensitivity: dict) -> ResultsDoc:
     """Pair 4: "Descriptive only", confidence Low, and no p-value anywhere (A27 rule 5)."""
     facts = Facts(pair="recession")
     label, reason = verdict.verdict(facts)
     level, why = verdict.confidence(facts)
     rises = main["groups"]["rises"]["tickers"]
-    studies = {}
+    studies: dict[str, dict[str, Any]] = {}
     for t, entry in rises.items():
         if "mean" not in entry:
             continue
@@ -437,7 +489,7 @@ def recession_result(main: dict, sensitivity: dict) -> dict:
         "confidence": {"level": level, "reason": why},
         "stocks_first": None,
         "n_events": len(main["groups"]["rises"]["dates"]),
-        "params": {k: v for k, v in PARAMS.items() if k != "bh_q"},
+        "params": Params(**{k: v for k, v in PARAMS.items() if k != "bh_q"}),
         "xcorr": NOT_IN_PLAN,
         "event_study": studies,
         "checklist": rows,
@@ -451,8 +503,11 @@ def recession_result(main: dict, sensitivity: dict) -> dict:
 # ---------------------------------------------------------------- writing
 
 
-def jsonable(obj):
-    """Replace NaN/inf by None and numpy scalars/arrays by Python values (strict JSON)."""
+def jsonable(obj: object) -> Any:
+    """Replace NaN/inf by None and numpy scalars/arrays by Python values (strict JSON).
+
+    Raises ``TypeError`` for any other type, so a stray object fails here, by name.
+    """
     if isinstance(obj, dict):
         return {str(k): jsonable(v) for k, v in obj.items()}
     if isinstance(obj, list | tuple):
@@ -467,12 +522,20 @@ def jsonable(obj):
         return float(obj) if math.isfinite(obj) else None
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
-    return obj
+    if obj is None or isinstance(obj, str | int):  # int covers bool
+        return obj
+    raise TypeError(f"not JSON-serialisable: {type(obj).__name__}")
 
 
-def write_json(doc: dict, path: Path) -> None:
-    """Strict JSON, written to a temp file and renamed (atomic)."""
+def write_json(doc: ResultsDoc | dict[str, Any], path: Path) -> None:
+    """Strict JSON, written to a uniquely named temp file and renamed (atomic)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(jsonable(doc), indent=1, allow_nan=False), "utf-8")
-    os.replace(tmp, path)
+    text = json.dumps(jsonable(doc), indent=1, allow_nan=False)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise

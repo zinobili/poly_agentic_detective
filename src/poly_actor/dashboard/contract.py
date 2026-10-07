@@ -40,9 +40,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, TypeVar
 
 log = logging.getLogger(__name__)
+_T = TypeVar("_T")
 
 STATUSES = (
     "Passed",
@@ -64,6 +65,81 @@ VERDICTS = (
 CONFIDENCE_LEVELS = ("Not enough data", "Low", "Medium", "High")
 NOT_IN_PLAN = "not_in_plan"
 GAP_STEP = "gap"
+
+
+# ---------------------------------------------------------------- the document (producer side)
+# `analysis/results.py` builds these; `parse_results` below reads them back defensively.
+# `tests/test_analysis_run.py` round-trips every pair, so a renamed key fails a test.
+
+
+class Params(TypedDict, total=False):
+    """Analysis parameters shown to the reader (the recession pair has no `bh_q`)."""
+
+    xcorr_lags: list[int]  # [min lag, max lag]
+    lag_unit: str
+    band_level: float
+    band_stat: str
+    band_kind: str
+    ci_level: float
+    bh_q: float
+    event_window_bars: list[int]
+    event_band_draws: int
+    max_quote_age_s: int
+
+
+class CheckRowDoc(TypedDict):
+    name: str
+    status: str  # one of STATUSES
+    plain: str
+    technical: str
+
+
+class ConfidenceDoc(TypedDict):
+    level: str  # one of CONFIDENCE_LEVELS
+    reason: str
+
+
+class _XCorrBase(TypedDict):
+    lags: list[int]
+    r: list[float]
+    t: list[float]
+    band: float
+    band_stat: str
+    peak_lag: int
+    clear_link: bool
+    adjacent_outside: bool
+    n_shifts: int
+
+
+class XCorrDoc(_XCorrBase, total=False):
+    residualised: XCorrDoc  # BTC: returns net of Bitcoin's own price
+    note: str  # A29 caveat
+
+
+class _ResultsBase(TypedDict):
+    pair_id: str
+    primary_ticker: str
+    verdict: str  # one of VERDICTS
+    verdict_reason: str
+    confidence: ConfidenceDoc
+    stocks_first: bool | None
+    n_events: int | None
+    params: Params
+    xcorr: dict[str, XCorrDoc] | str  # str: NOT_IN_PLAN
+    event_study: dict[str, dict[str, Any]]  # see `EventStudy` for the keys
+    checklist: list[CheckRowDoc]
+    details: dict[str, Any]  # free-form, for experts; the dashboard does not parse it
+
+
+class ResultsDoc(_ResultsBase, total=False):
+    """One pair's results file (the module docstring shows the shape). The keys below are
+    optional; `NotRequired` is not used because this module has postponed annotations."""
+
+    schema_version: int  # added by the writer
+    verdict_if_placebo_read_literally: str  # tested pairs only
+    verdict_if_a27_rule3_read_literally: str  # A29
+    a29_note: str
+    event_study_notes: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -134,7 +210,7 @@ class PairResults:
     confidence: Confidence | None = None
     n_events: int | None = None
     stocks_first: bool | None = None
-    params: dict[str, Any] = field(default_factory=dict)
+    params: Params = field(default_factory=Params)
     primary_ticker: str | None = None  # the stock of the pre-registered test
     event_study_notes: dict[str, str] | None = None  # by ticker: why chart 2 is missing
 
@@ -160,8 +236,10 @@ def load_results(clean_dir: Path, pair_id: str) -> PairResults | None:
     return parse_results(raw)
 
 
-def parse_results(raw: dict[str, Any]) -> PairResults:
-    """Pure parser: each slot is validated on its own, bad slots become ``None``."""
+def parse_results(raw: ResultsDoc | dict[str, Any]) -> PairResults:
+    """Pure parser: each slot is validated on its own, bad slots become ``None``.
+
+    ``raw`` is untrusted JSON: it is read as a `ResultsDoc` but every slot is checked."""
     xraw = raw.get("xcorr")
     stocks_first = raw.get("stocks_first")
     return PairResults(
@@ -181,18 +259,20 @@ def parse_results(raw: dict[str, Any]) -> PairResults:
     )
 
 
-def _notes(raw: Any) -> dict[str, str] | None:
+def _notes(raw: object) -> dict[str, str] | None:
     if not isinstance(raw, dict):
         return None
     out = {str(k): _text(v) for k, v in raw.items()}
     return {k: v for k, v in out.items() if v} or None
 
 
-def _by_ticker(raw: Any, parse: Callable[[str, Any], Any], slot: str) -> dict[str, Any] | None:
+def _by_ticker(
+    raw: object, parse: Callable[[str, object], _T | None], slot: str
+) -> dict[str, _T] | None:
     """Parse each ticker's entry on its own; bad entries are logged and left out."""
     if not isinstance(raw, dict):
         return None
-    out = {}
+    out: dict[str, _T] = {}
     for ticker, entry in raw.items():
         value = parse(str(ticker), entry)
         if value is None:
@@ -202,7 +282,7 @@ def _by_ticker(raw: Any, parse: Callable[[str, Any], Any], slot: str) -> dict[st
     return out or None
 
 
-def _floats(values: Any) -> tuple[float, ...] | None:
+def _floats(values: object) -> tuple[float, ...] | None:
     if not isinstance(values, list) or not values:
         return None
     out: list[float] = []
@@ -215,22 +295,22 @@ def _floats(values: Any) -> tuple[float, ...] | None:
     return tuple(out)
 
 
-def _ints(values: Any) -> tuple[int, ...] | None:
+def _ints(values: object) -> tuple[int, ...] | None:
     floats = _floats(values)
     if floats is None or any(not f.is_integer() for f in floats):
         return None
     return tuple(int(f) for f in floats)
 
 
-def _text(value: Any) -> str | None:
+def _text(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _count(value: Any) -> int | None:
+def _count(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
-def _plain_xcorr(ticker: str, raw: Any) -> XCorr | None:
+def _plain_xcorr(ticker: str, raw: object) -> XCorr | None:
     if not isinstance(raw, dict):
         return None
     lags, r, band = _ints(raw.get("lags")), _floats(raw.get("r")), _floats([raw.get("band")])
@@ -256,9 +336,9 @@ def _plain_xcorr(ticker: str, raw: Any) -> XCorr | None:
     )
 
 
-def _xcorr(ticker: str, raw: Any) -> XCorr | None:
+def _xcorr(ticker: str, raw: object) -> XCorr | None:
     base = _plain_xcorr(ticker, raw)
-    if base is None:
+    if base is None or not isinstance(raw, dict):  # a non-dict never parses to a base
         return None
     resid = raw.get("residualised")
     if resid is None:
@@ -269,7 +349,7 @@ def _xcorr(ticker: str, raw: Any) -> XCorr | None:
     return XCorr(base.ticker, base.lags, base.r, base.band, parsed, base.t, base.note)
 
 
-def _event_times(values: Any) -> tuple[datetime, ...] | None:
+def _event_times(values: object) -> tuple[datetime, ...] | None:
     if not isinstance(values, list):
         return None
     out = []
@@ -284,7 +364,7 @@ def _event_times(values: Any) -> tuple[datetime, ...] | None:
     return tuple(out)
 
 
-def _steps(values: Any) -> tuple[str, ...] | None:
+def _steps(values: object) -> tuple[str, ...] | None:
     if not isinstance(values, list) or not values:
         return None
     if not all(isinstance(v, str) and v for v in values):
@@ -292,7 +372,7 @@ def _steps(values: Any) -> tuple[str, ...] | None:
     return tuple(values)
 
 
-def _paths(raw: Any, n: int) -> tuple[tuple[float, ...], ...] | None:
+def _paths(raw: object, n: int) -> tuple[tuple[float, ...], ...] | None:
     if raw is None:
         return ()
     if not isinstance(raw, list):
@@ -306,7 +386,7 @@ def _paths(raw: Any, n: int) -> tuple[tuple[float, ...], ...] | None:
     return tuple(out)
 
 
-def _gap_marks(raw: Any, n_paths: int) -> tuple[tuple[int, ...], ...] | None:
+def _gap_marks(raw: object, n_paths: int) -> tuple[tuple[int, ...], ...] | None:
     if raw is None:
         return ()
     if not isinstance(raw, list) or len(raw) != n_paths:
@@ -323,7 +403,7 @@ def _gap_marks(raw: Any, n_paths: int) -> tuple[tuple[int, ...], ...] | None:
     return tuple(out)
 
 
-def _compare(raw: Any, n: int) -> Compare | None:
+def _compare(raw: object, n: int) -> Compare | None:
     if not isinstance(raw, dict):
         return None
     mean, low, high = (_floats(raw.get(k)) for k in ("mean", "ci_low", "ci_high"))
@@ -333,7 +413,7 @@ def _compare(raw: Any, n: int) -> Compare | None:
     return Compare(label, mean, low, high)
 
 
-def _event_study(ticker: str, raw: Any) -> EventStudy | None:
+def _event_study(ticker: str, raw: object) -> EventStudy | None:
     if not isinstance(raw, dict):
         return None
     steps = _steps(raw.get("steps"))
@@ -373,7 +453,7 @@ def _event_study(ticker: str, raw: Any) -> EventStudy | None:
     )
 
 
-def _checklist(raw: Any) -> tuple[CheckRow, ...] | None:
+def _checklist(raw: object) -> tuple[CheckRow, ...] | None:
     if not isinstance(raw, list) or not raw:
         return None
     rows = []
@@ -392,7 +472,7 @@ def _checklist(raw: Any) -> tuple[CheckRow, ...] | None:
     return tuple(rows)
 
 
-def _confidence(raw: Any) -> Confidence | None:
+def _confidence(raw: object) -> Confidence | None:
     if not isinstance(raw, dict) or raw.get("level") not in CONFIDENCE_LEVELS:
         return None
     reason = _text(raw.get("reason"))
