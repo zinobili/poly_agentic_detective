@@ -64,3 +64,9 @@ Fix where step 6 touches the code: streamlit pinned twice in pyproject; `load_pa
 - [ ] Verdict, confidence and checklist are computed by code, never hand-written
 - [ ] The step-5 dashboard minors listed above are fixed
 - [ ] Build report ≤250 words; full report `docs/reviews/step6_build_r1.md`
+
+## Build status for validation (2026-10-08)
+- Builder report: `docs/reviews/step6_build.md` (D1–D3 decided by the user → prereg A28, 71d1ab1).
+- Commits: ba5e8f1 (build), 99e75aa (A28: studentized shift band, HAC-t Fed placebo; xfail now a passing test). 431 tests, check.sh PASS.
+- Real run: `python -m poly_actor.analysis run --workers 4` → `data/clean/results/` (Fed No head start, BTC No head start with primary marked "Failed (opposite sign)", CPI Too early to tell, recession Descriptive only; all Low).
+- Main's questions for the validator: (1) BTC lag-1 with spot control is strongly negative (−39.9, two-sided p ≈ 3e-13) while no-control is ≈ 0: real, or mechanical (stale control / collinearity)? Is "No head start" the right verdict given rule 7 order? (2) Card text says Fed odds and TLT "move in the same hour" on a null result: overclaim? (3) BTC card names COIN, not IBIT (the primary ticker).
