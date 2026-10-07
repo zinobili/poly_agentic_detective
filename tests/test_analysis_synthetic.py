@@ -37,17 +37,18 @@ def test_planted_two_bar_lead_is_recovered():
     assert peak >= 90 and lead >= 90 and first >= 90, (peak, lead, first)
 
 
-def test_chart1_band_power_at_fed_size_is_limited():
-    """Documented limitation: at the real Fed size (500 sessions) the simultaneous band flags
-    the same 0.1-SD lead in well under 90% of seeds (far lags have few in-session pairs), while
-    the primary regression still finds it in most seeds (measured: 41 and 83 of 100)."""
+def test_chart1_band_power_at_fed_size():
+    """At the real Fed size (500 sessions) the studentized band (A28 item 1) flags the 0.1-SD
+    lead at +2 in >= 90% of seeds (measured 97/100; the A27 band on raw r managed 41/100,
+    because far lags have few in-session pairs and their r varies most). The primary verdict
+    "moves first" stays in most seeds (measured 83/100)."""
     peak, first = 0, 0
     for seed in range(100):
         grid = synth.to_grid(synth.make(seed, n_sessions=500, betas={2: 0.1}))
         xc = placebo.xcorr_with_band(grid, grid.returns["TLT"])
         peak += xc.peak_lag == 2 and xc.clear_link
         first += fed_outcome(grid)[0] == verdict.FIRST
-    assert 25 <= peak <= 60, peak
+    assert peak >= 90, peak
     assert first >= 75, first
 
 
@@ -67,7 +68,8 @@ def test_contemporaneous_effect_is_not_called_a_lead():
 
 @pytest.fixture(scope="module")
 def null_runs():
-    """1,000 seeds of the realistic null: sparse heavy-tailed PM changes, GARCH-t returns."""
+    """1,000 seeds of the realistic null: sparse heavy-tailed PM changes, GARCH-t returns with
+    volatility shared by the odds and the stock."""
     rejections, exceed = 0, 0
     for seed in range(1000):
         grid = synth.to_grid(synth.make(5000 + seed, n_sessions=500, realistic=True))
@@ -81,14 +83,27 @@ def test_realistic_null_rejection_rate(null_runs):
     assert 0.03 <= null_runs[0] <= 0.08, null_runs
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="OPEN A27 ISSUE (step6_build.md): the session-shift band is anti-conservative when "
-    "odds changes and returns share volatility (measured 15.8% vs target 3-7%; 4.3% with "
-    "independent volatility). A27 is frozen, so the method is not changed without a decision.",
-)
 def test_realistic_null_band_exceedance(null_runs):
+    """A28 item 1: the studentized band (robust t per lag) holds 3-7% under shared volatility
+    (the A27 band on raw r was exceeded 15.8% of the time on these seeds)."""
     assert 0.03 <= null_runs[1] <= 0.07, null_runs
+
+
+def test_realistic_null_fed_shift_placebo_rate():
+    """A28 item 1: the Fed shift placebo on the HAC t rejects at about its nominal level under
+    the realistic null (the A27 raw-sum statistic rejected 9.7% at 5%). 200 seeds of the
+    1,000-seed measurement in the build report; tolerance widened for n = 200."""
+    p = np.array(
+        [
+            placebo.shift_placebo(g, g.returns["TLT"], primary.FED_LAGS)["permutation_p"]
+            for g in (
+                synth.to_grid(synth.make(5000 + seed, n_sessions=500, realistic=True))
+                for seed in range(200)
+            )
+        ]
+    )
+    assert 0.02 <= np.mean(p < 0.05) <= 0.08, np.mean(p < 0.05)
+    assert 0.05 <= np.mean(p < 0.10) <= 0.15, np.mean(p < 0.10)
 
 
 # ---------------------------------------------------------------- row 4: decision bars (B1)

@@ -20,7 +20,7 @@ from poly_actor.analysis.verdict import Facts
 MIN_ROWS = 500  # A27 rule 7.2 / M8 (Fed, BTC)
 MIN_SESSIONS = 60
 XLU_PLACEBO_P = 0.10  # XLU passes if two-sided p > 0.10 (A27 rule 3)
-FED_PLACEBO_P = 0.10  # shift permutation p < 0.10 (A27 rule 11)
+FED_PLACEBO_P = 0.10  # shift permutation p < 0.10 (A27 rule 11; statistic = HAC t, A28 item 1)
 CPI_PLACEBO_PCTL = 0.10
 
 
@@ -53,7 +53,7 @@ def fed_core(
     secondary: tuple[str, ...] = (),
 ) -> FedCore:
     _, reg = primary.fed_regression(grid, "TLT")
-    plc = placebo.shift_placebo(grid, grid.returns["TLT"], primary.FED_LAGS)
+    plc = placebo.shift_placebo(grid, grid.returns["TLT"], primary.FED_LAGS, stat="hac_t")
     rob = (
         primary.fed_robustness(grid, grid_age900, event_sessions or set())
         if grid_age900 is not None
@@ -87,7 +87,8 @@ def fed_facts(core: FedCore, bh_reject: bool, bh_q: float) -> Facts:
         sufficient=ok,
         sufficiency_note=note,
         placebo_pass=plc_p < FED_PLACEBO_P,
-        placebo_note=f"session-shift permutation p = {plc_p:.3f} (needs < {FED_PLACEBO_P})",
+        placebo_note=f"session-shift permutation p of the HAC t = {plc_p:.3f} "
+        f"(needs < {FED_PLACEBO_P})",
         p_one=t.p_one,
         p_two=t.p_two,
         estimate_h1_sign=t.estimate > 0,
@@ -129,7 +130,9 @@ def btc_core(
     _, reg = primary.btc_regression(grid, controls, "IBIT")
     _, reg_nc = primary.btc_regression(grid, controls, "IBIT", with_control=False)
     xlu = primary.btc_regression(grid, controls, "XLU")[1] if "XLU" in grid.returns else None
-    plc = placebo.shift_placebo(grid, grid.returns["IBIT"], primary.BTC_LAGS, controls)
+    plc = placebo.shift_placebo(
+        grid, grid.returns["IBIT"], primary.BTC_LAGS, controls, stat="coef"
+    )  # reported only; XLU gates BTC (A27 rule 3); A28 amends the Fed placebo only
     rob = primary.btc_robustness(grid, grid_age900, controls) if grid_age900 is not None else None
     raw = {t: placebo.xcorr_with_band(grid, grid.returns[t]) for t in xcorr_tickers}
     resid = {

@@ -106,6 +106,26 @@ def test_unsorted_lags_are_sorted():
     assert xc.lags == (0, 1) and xc.r == (0.1, 0.5)
 
 
+def test_robust_t_band_is_parsed_and_sorted_with_the_lags():
+    """A28 item 1: band_stat "robust_t" carries a t per lag, sorted with the lags."""
+    raw = {"lags": [1, 0], "r": [0.5, 0.1], "t": [2.0, 1.0], "band": 3.0, "band_stat": "robust_t"}
+    xc = parse_results({"pair_id": "p", "xcorr": {"T": raw}}).xcorr["T"]
+    assert xc.t == (1.0, 2.0) and xc.stat == (1.0, 2.0) and xc.r == (0.1, 0.5)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"t": [1.0], "band_stat": "robust_t"},  # wrong length
+        {"band_stat": "robust_t"},  # t missing
+        {"t": [1.0, 2.0], "band_stat": "z"},  # unknown statistic
+    ],
+)
+def test_bad_robust_t_entries_are_rejected(bad):
+    raw = {"lags": [1, 0], "r": [0.5, 0.1], "band": 3.0, **bad}
+    assert parse_results({"pair_id": "p", "xcorr": {"T": raw}}).xcorr is None
+
+
 def test_pair_specs_from_real_pairs_file():
     specs = {s.pair_id: s.tickers for s in load_pair_specs()}
     assert specs["fed_decision"] == ("TLT", "SPY", "XLF")

@@ -1,5 +1,6 @@
 """Hourly primary tests of A27 (rules 2-3), their robustness runs (rule 10), the shift
-placebo (rule 11) and the exploratory overnight test (rule 14). Pure functions.
+placebo (rule 11; statistic per A28 item 1 in `placebo.py`) and the exploratory overnight test
+(rule 14). Pure functions.
 
 Units. Returns are log returns. Fed effects are TLT bp per 1 bp of Δdovishness (beta * 1e4).
 BTC effects are IBIT bp per 1% change in the ladder level (beta * 100).

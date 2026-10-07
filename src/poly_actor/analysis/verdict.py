@@ -1,4 +1,5 @@
-"""Verdict, confidence and checklist, computed from test outcomes (A27 rules 5-10).
+"""Verdict, confidence and checklist, computed from test outcomes (A27 rules 5-10, as
+amended by A28 items 2 and 3).
 
 Nothing here is hand-written per pair: every label follows from `Facts`. Rule order is the
 A27 order and the first matching row wins.
@@ -17,10 +18,10 @@ WEAK_P = 0.10  # display only: a non-significant primary with one-sided p < 0.10
 
 # A27 rule 9 (correlation units, 80% power, one-sided 5%).
 MDE = {"fed": 0.051, "btc": 0.068, "cpi": 0.72}
-# Margin a non-significant primary's one-sided 95% upper bound must clear for "No head
-# start". Fed/BTC: the MDE (rule 5). CPI: 0.5, the B3 wording ("underpowered unless the 90% CI
-# excludes rho <= -0.5"), which the hand-off example requires and which is the stricter of the
-# two (decided before any real result was computed; see the step 6 build report).
+# Margin a non-significant primary's one-sided 95% upper bound (H1 direction) must clear for
+# "No head start". Fed/BTC: the MDE (A27 rule 5). CPI: 0.5, prereg A28 item 3 (the B3 wording,
+# "underpowered unless the 90% CI excludes rho <= -0.5"; the stricter of the two). For CPI the
+# H1-direction effect is -rho, so the bound is minus the lower end of the 90% Fisher interval.
 NULL_MARGIN = {"fed": 0.051, "btc": 0.068, "cpi": 0.5}
 
 DESCRIPTIVE = "Descriptive only"
@@ -30,11 +31,13 @@ NO_EXTRA = "No extra information"
 FIRST = "Polymarket moves first"
 SAME = "Moves at the same time"
 
-# Fed (session shift) and CPI (random dates) placebos are RELATIVE: they pass only when the
-# real statistic stands out from the placebo distribution, so a null primary "fails" them by
-# construction. They gate the verdict only for a BH-significant primary (reading chosen before
-# any real result; the literal reading is also computed, see `verdict(literal_placebo=True)`).
-# BTC's XLU control is an absolute negative control and always gates.
+# Prereg A28 item 2 (amends A27 rule 7.3). Fed (session shift) and CPI (random dates) placebos
+# are RELATIVE: they pass only when the real statistic stands out from the placebo
+# distribution, so a null primary "fails" them by construction. They gate the verdict only for
+# a BH-significant primary; for a non-significant one they are reported, not used. The literal
+# A27 reading is also computed and written (`verdict(literal_placebo=True)`, results key
+# `verdict_if_placebo_read_literally`). BTC's XLU control is an absolute negative control and
+# always gates.
 RELATIVE_PLACEBO = frozenset({"fed", "cpi"})
 
 
@@ -68,14 +71,14 @@ class Facts:
 
 
 def placebo_gates(f: Facts, literal: bool = False) -> bool:
-    """True when a failed placebo decides the verdict (rule 7.3)."""
+    """True when a failed placebo decides the verdict (A27 rule 7.3 as amended by A28 item 2)."""
     if f.placebo_pass is not False:
         return False
     return literal or f.pair not in RELATIVE_PLACEBO or f.bh_reject
 
 
 def verdict(f: Facts, literal_placebo: bool = False) -> tuple[str, str]:
-    """(verdict, reason). A27 rule 7, first matching row wins."""
+    """(verdict, reason). A27 rule 7 (A28 items 2-3), first matching row wins."""
     if f.pair == "recession":
         return DESCRIPTIVE, "One episode, so no significance test is made (pre-registered)."
     if not f.sufficient:

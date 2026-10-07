@@ -24,8 +24,9 @@ PARAMS = {
     "xcorr_lags": [min(placebo.XCORR_LAGS), max(placebo.XCORR_LAGS)],
     "lag_unit": "session bars (about 1 hour)",
     "band_level": placebo.BAND_QUANTILE,
-    "band_kind": "simultaneous: 95th percentile of the largest |r| over every session shift of "
-    f"at least {placebo.MIN_SHIFT} sessions",
+    "band_stat": placebo.BAND_STAT,
+    "band_kind": "simultaneous: 95th percentile of the largest |robust t| over every session "
+    f"shift of at least {placebo.MIN_SHIFT} sessions (A28 item 1)",
     "ci_level": 0.90,
     "bh_q": verdict.BH_Q,
     "event_window_bars": [-3, 6],
@@ -49,7 +50,9 @@ def xcorr_json(res: placebo.XcorrResult) -> dict:
     return {
         "lags": list(res.lags),
         "r": [0.0 if math.isnan(v) else v for v in res.r],
+        "t": [0.0 if math.isnan(v) else v for v in res.t],
         "band": res.band,
+        "band_stat": placebo.BAND_STAT,
         "peak_lag": res.peak_lag,
         "clear_link": res.clear_link,
         "adjacent_outside": res.adjacent_outside,
@@ -148,8 +151,9 @@ def fed_result(core: FedCore, facts: Facts, bh: dict, studies: dict, extra: dict
             "Placebo",
             "Passed" if facts.placebo_pass else "Failed",
             "Link vanishes when timing is scrambled",
-            f"session-shift permutation p = {_fmt(plc['permutation_p'])} over "
-            f"{plc['n_shifts']} shifts (passes if < 0.10)",
+            f"session-shift permutation p of the HAC t of b0+b1+b2 = "
+            f"{_fmt(plc['permutation_p'])} over {plc['n_shifts']} shifts (passes if < 0.10; "
+            "gates the verdict only when the primary is significant, prereg A28)",
         ),
         *rows,
         _robust_row(core.robustness, facts),

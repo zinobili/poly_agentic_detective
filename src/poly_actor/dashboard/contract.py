@@ -14,8 +14,9 @@ Shape (schema 2; timestamps ISO-8601, tz-aware UTC)::
       "n_events": 16,
       "params": {"xcorr_lags": [-6, 6], "band_level": 0.95, "ci_level": 0.9, ...},
       "xcorr": "not_in_plan"                          # CPI, recession: no hourly lead-lag
-             | {"TLT": {"lags": [-6..6], "r": [...], "band": 0.07,   # scalar band
-                        "residualised": {"lags", "r", "band"}}},      # optional (BTC)
+             | {"TLT": {"lags": [-6..6], "r": [...], "band": 3.1,    # scalar band
+                        "t": [...], "band_stat": "robust_t",          # A28: band on |t|
+                        "residualised": {"lags", "r", "t", "band", "band_stat"}}},  # BTC
       "event_study": {"TLT": {"unit": "bars|days", "steps": ["-3", ..., "gap", ...],
                               "mean", "ci_low", "ci_high",            # percent, per step
                               "band_low", "band_high",                # optional random dates
@@ -58,9 +59,15 @@ GAP_STEP = "gap"
 class XCorr:
     ticker: str
     lags: tuple[int, ...]
-    r: tuple[float, ...]
-    band: float  # simultaneous noise band (scalar)
+    r: tuple[float, ...]  # drawn in Chart 1
+    band: float  # simultaneous noise band (scalar), in the units of `stat`
     residualised: XCorr | None = None  # BTC: returns net of Bitcoin's own price
+    t: tuple[float, ...] | None = None  # robust t per lag; the band applies to it (A28 item 1)
+
+    @property
+    def stat(self) -> tuple[float, ...]:
+        """The per-lag statistic the band applies to: robust t when given, else r."""
+        return self.t if self.t is not None else self.r
 
 
 @dataclass(frozen=True)
@@ -208,8 +215,21 @@ def _plain_xcorr(ticker: str, raw: Any) -> XCorr | None:
         return None
     if band[0] < 0 or len(set(lags)) != len(lags):
         return None
+    t = None
+    if raw.get("band_stat") == "robust_t":  # A28 item 1: the band is read against |t|
+        t = _floats(raw.get("t"))
+        if t is None or len(t) != len(lags):
+            return None
+    elif raw.get("band_stat") not in (None, "r"):
+        return None
     order = sorted(range(len(lags)), key=lambda i: lags[i])
-    return XCorr(ticker, tuple(lags[i] for i in order), tuple(r[i] for i in order), band[0])
+    return XCorr(
+        ticker,
+        tuple(lags[i] for i in order),
+        tuple(r[i] for i in order),
+        band[0],
+        t=None if t is None else tuple(t[i] for i in order),
+    )
 
 
 def _xcorr(ticker: str, raw: Any) -> XCorr | None:
@@ -222,7 +242,7 @@ def _xcorr(ticker: str, raw: Any) -> XCorr | None:
     parsed = _plain_xcorr(ticker, resid)
     if parsed is None:
         return None
-    return XCorr(base.ticker, base.lags, base.r, base.band, parsed)
+    return XCorr(base.ticker, base.lags, base.r, base.band, parsed, base.t)
 
 
 def _event_times(values: Any) -> tuple[datetime, ...] | None:

@@ -51,11 +51,13 @@ class XcorrShape:
 
 def classify_xcorr(xc: XCorr) -> XcorrShape:
     """A27 rule 12: a clear link is a peak outside the simultaneous band (the band already
-    covers every lag at once, so no neighbouring bar is required)."""
-    outside = [abs(r) > xc.band for r in xc.r]
+    covers every lag at once, so no neighbouring bar is required). Peak and band are read from
+    the robust t per lag when the results carry it (A28 item 1), else from r."""
+    stat = xc.stat
+    outside = [abs(v) > xc.band for v in stat]
     if not any(outside):
         return XcorrShape("none", None)
-    peak = min(range(len(xc.r)), key=lambda i: (-abs(xc.r[i]), abs(xc.lags[i])))
+    peak = min(range(len(stat)), key=lambda i: (-abs(stat[i]), abs(xc.lags[i])))
     lag = xc.lags[peak]
     return XcorrShape("same" if lag == 0 else "lead" if lag > 0 else "lag", lag)
 
@@ -139,14 +141,20 @@ def xcorr_how_to_read(adjusted: bool = False) -> str:
 def xcorr_expert(xc: XCorr) -> str:
     out = (
         f"Correlation of hourly changes, lags {xc.lags[0]:+d} to {xc.lags[-1]:+d} session bars "
-        f"(positive lag: odds first). Simultaneous noise zone: +/-{xc.band:.3f}."
+        f"(positive lag: odds first). Simultaneous noise zone: {_zone(xc)}."
     )
     if xc.residualised:
         out += (
             f" Spot-adjusted panel (returns net of BTC-USD lags 0-3): noise zone "
-            f"+/-{xc.residualised.band:.3f}; the title is read from it."
+            f"{_zone(xc.residualised)}; the title is read from it."
         )
     return out
+
+
+def _zone(xc: XCorr) -> str:
+    if xc.t is None:
+        return f"+/-{xc.band:.3f}"
+    return f"|robust t| <= {xc.band:.2f} (bars show r; a bar is outside when its t is)"
 
 
 def stocks_first_note(results: PairResults | None) -> str | None:

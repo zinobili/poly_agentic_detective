@@ -13,7 +13,8 @@ regressors pass the filter (A27 rule 1):
 
 `both_trading` is split into a stock side (every equity return of the pair present, no outage)
 and a PM side (signal level and change present, no outage). The split lets the session-shift
-placebos move the PM side to another session while the stock side stays put (A27 rules 11-12).
+placebos move the PM side to another session while the stock side stays put (A27 rules 11-12,
+as amended by A28 item 1).
 
 Arrays are (S, P): S sessions in date order, P = 7 bar positions. Flattening row-major gives
 time order. Timestamps are epoch seconds (UTC).

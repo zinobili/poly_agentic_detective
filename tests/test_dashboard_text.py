@@ -75,6 +75,15 @@ def test_all_inside_band_is_a_valid_result():
     assert "That's a valid result, not a failure." in text.xcorr_so_what(xc)
 
 
+def test_robust_t_decides_the_link_when_the_results_carry_it():
+    """A28 item 1: with a t band the title reads |t|, not |r|."""
+    base = xcorr("TLT", p2=0.5, m1=0.02)  # by r alone: a 2-hour odds lead
+    t = tuple(4.0 if lag == -1 else 1.0 for lag in base.lags)
+    xc = XCorr(base.ticker, base.lags, base.r, 3.0, t=t)
+    assert text.classify_xcorr(xc).kind == "lag" and text.classify_xcorr(xc).peak_lag == -1
+    assert "|robust t| <= 3.00" in text.xcorr_expert(xc)
+
+
 def test_bar_exactly_on_the_band_is_inside():
     assert text.classify_xcorr(xcorr("TLT", band=0.1, p2=0.1)).kind == "none"
 

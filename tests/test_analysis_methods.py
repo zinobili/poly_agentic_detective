@@ -93,6 +93,61 @@ def test_fft_cross_correlation_equals_direct_for_every_shift():
         assert np.allclose(allr[j], direct, equal_nan=True)
 
 
+def test_fft_robust_t_equals_direct_for_every_shift():
+    """A28 item 1: the studentized band statistic, FFT over all shifts vs the direct loop."""
+    grid = synth.to_grid(synth.make(4, n_sessions=60, realistic=True))
+    y = grid.returns["TLT"]
+    _, allt = placebo.xcorr_stats_all_shifts(grid, y)
+    for j in (0, 7, 31):
+        direct = placebo.xcorr_t(sample.shift_sessions(grid, j), y)
+        assert np.allclose(allt[j], direct, equal_nan=True, atol=1e-10)
+
+
+def test_robust_t_hand_example():
+    """t = sum xc*yc / sqrt(sum xc^2 yc^2). x = (1, 2, 3), y = (1, 2, 4): xc = (-1, 0, 1),
+    yc = (-4/3, -1/3, 5/3), numerator 3, denominator sqrt(41/9), t = 9 / sqrt(41)."""
+    t = placebo._robust_t(np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 4.0]))
+    assert t == pytest.approx(9 / np.sqrt(41))
+
+
+def test_hac_t_placebo_equals_build_design_loop_and_the_primary():
+    """A28 item 1: the Fed shift statistic is the HAC t of b0+b1+b2; shift 0 is the primary t
+    and every shift equals a fresh `build_design` + `ols` + `lin_test` on the shifted grid."""
+    grid = synth.to_grid(synth.make(7, n_sessions=60))
+    y = grid.returns["TLT"]
+    ts = placebo.hac_t_all_shifts(grid, y, primary.FED_LAGS, shifts=np.array([0, 9, 30]))
+    _, reg = primary.fed_regression(grid)
+    assert ts[0] == pytest.approx(reg.tests["sum"].t, rel=1e-10)
+    for j in (9, 30):
+        d = sample.build_design(sample.shift_sessions(grid, j), y, primary.FED_LAGS)
+        fit = models.ols(d.X, d.y, cov="hac")
+        w = models.weights(d.names, ("pm_lag0", "pm_lag1", "pm_lag2"))
+        assert ts[j] == pytest.approx(models.lin_test(fit, w).t, rel=1e-10)
+    assert np.isnan(ts[1])  # shifts not asked for stay NaN
+
+
+def test_hac_t_placebo_with_controls_equals_build_design_loop():
+    grid = synth.to_grid(synth.make(8, n_sessions=40))
+    y = grid.returns["TLT"]
+    controls = np.random.default_rng(1).standard_normal((40, 7, 2))
+    controls[3, 2, 0] = np.nan
+    ts = placebo.hac_t_all_shifts(grid, y, (1,), controls, shifts=np.array([11]))
+    d = sample.build_design(sample.shift_sessions(grid, 11), y, (1,), controls)
+    lt = models.lin_test(models.ols(d.X, d.y, cov="hac"), np.array([0.0, 1.0, 0.0, 0.0]))
+    assert ts[11] == pytest.approx(lt.t, rel=1e-10)
+
+
+def test_band_is_read_from_t_not_r():
+    """A28 item 1: a large r with a small robust t is inside the band, and vice versa."""
+    lags = tuple(range(-6, 7))
+    r, t = np.zeros(13), np.zeros(13)
+    r[lags.index(2)], t[lags.index(2)] = 0.5, 1.0  # big r, small t: inside
+    r[lags.index(-1)], t[lags.index(-1)] = 0.05, 4.0  # small r, big t: outside
+    out = placebo.summarise_xcorr(lags, r, 3.0, 10, t)
+    assert out.clear_link and out.peak_lag == -1 and out.stocks_first
+    assert out.r[lags.index(2)] == 0.5 and out.t[lags.index(-1)] == 4.0
+
+
 def test_fft_ols_equals_loop_for_every_shift():
     grid = synth.to_grid(synth.make(5, n_sessions=60))
     y = grid.returns["TLT"]

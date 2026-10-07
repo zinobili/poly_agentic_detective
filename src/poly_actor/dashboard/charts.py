@@ -109,12 +109,29 @@ def _xy(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
 
 
 def xcorr_figure(xc: XCorr) -> go.Figure:
-    """Chart 1: one bar per lag; bars inside the simultaneous noise zone are grey."""
-    colors = [POLY_COLOR if abs(r) > xc.band else GREY for r in xc.r]
+    """Chart 1: one bar per lag (r); bars inside the simultaneous noise zone are grey.
+
+    With a robust-t band (A28 item 1) the zone is in t units, so each lag gets its own limit
+    in r units, r * band / |t|, drawn as a tick; otherwise one shaded zone of +/- band."""
+    colors = [POLY_COLOR if abs(v) > xc.band else GREY for v in xc.stat]
     fig = go.Figure(
         go.Bar(x=list(xc.lags), y=list(xc.r), marker_color=colors, name="Link strength")
     )
-    fig.add_hrect(y0=-xc.band, y1=xc.band, fillcolor=GREY, opacity=0.25, line_width=0)
+    if xc.t is None:
+        fig.add_hrect(y0=-xc.band, y1=xc.band, fillcolor=GREY, opacity=0.25, line_width=0)
+    else:
+        limit = [abs(r) * xc.band / abs(t) if t else None for r, t in zip(xc.r, xc.t, strict=True)]
+        for sign in (1, -1):
+            fig.add_trace(
+                go.Scatter(
+                    x=list(xc.lags),
+                    y=[None if v is None else sign * v for v in limit],
+                    mode="markers",
+                    marker={"symbol": "line-ew-open", "size": 18, "color": GREY},
+                    name="Noise limit",
+                    hoverinfo="skip",
+                )
+            )
     fig.update_xaxes(title_text="Time gap in hours (positive: odds moved first)", dtick=1)
     fig.update_yaxes(title_text="Link strength (-1 to 1)")
     fig.update_layout(height=340, margin={"t": 20, "r": 20}, showlegend=False)
