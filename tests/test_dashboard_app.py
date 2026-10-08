@@ -161,3 +161,13 @@ def test_control_ticker_picker_label_and_title(monkeypatch, tmp_path):
     body = page_text(at)
     assert "No clear timing link between Bitcoin price odds and XLU (utilities)" in body
     assert "good news" in body
+
+
+@pytest.mark.parametrize(
+    ("theme", "bg"), [("dark", "#0e1117"), ("light", "#ffffff"), (None, "#ffffff")]
+)
+def test_pair_bar_matches_the_theme(theme, bg):
+    from poly_actor.dashboard.style import page_css
+
+    css = page_css(theme)
+    assert f"background:{bg}" in css and "%(" not in css

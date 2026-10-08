@@ -19,7 +19,7 @@ import pandas as pd
 import streamlit as st
 
 from poly_actor.config import CLEAN_DIR
-from poly_actor.dashboard import charts, text
+from poly_actor.dashboard import charts, style, text
 from poly_actor.dashboard.contract import PairResults
 from poly_actor.dashboard.load import (
     PairSpec,
@@ -33,25 +33,6 @@ from poly_actor.dashboard.load import (
 CLEAN_DIR_ENV = "POLY_ACTOR_CLEAN_DIR"
 SELECTED = "selected_pair"
 SCROLL_FLAG = "scroll_to_evidence"
-
-CSS = """
-<style>
-.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;
-  font-weight:600;background:#e5e7eb;color:#374151}
-.badge.lead{background:#dbeafe;color:#1e40af}
-.badge.same{background:#fef3c7;color:#92400e}
-.badge.none{background:#e5e7eb;color:#374151}
-.meter i{display:inline-block;width:18px;height:6px;margin-right:3px;border-radius:3px;
-  background:#e5e7eb}
-.meter i.on{background:#2563eb}
-.tech{font-family:ui-monospace,Consolas,monospace;font-size:.75rem;color:#6b7280;
-  margin:-6px 0 8px 1.4rem}
-.chip{display:inline-block;margin:0 6px 6px 0;padding:3px 10px;border:1px solid #d1d5db;
-  border-radius:999px;font-size:.85rem}
-.st-key-pair_nav{position:sticky;top:2.9rem;z-index:99;background:#fff;padding:6px 0;
-  border-bottom:1px solid #e5e7eb}
-</style>
-"""
 
 _BADGE_CLASS = {
     "Polymarket moves first": "lead",
@@ -259,7 +240,7 @@ def _scroll_to_evidence() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Signal Lab", layout="wide")
-    st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown(style.page_css(st.context.theme.type), unsafe_allow_html=True)
     clean_dir = Path(os.environ.get(CLEAN_DIR_ENV, CLEAN_DIR))
     specs = _specs()
     results = _results(str(clean_dir), results_signature(clean_dir))
