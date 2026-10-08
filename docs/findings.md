@@ -186,5 +186,5 @@ python -m poly_actor.analysis report          # this report only, from the exist
 
 Regenerating from the same results files gives a byte-identical report.
 
-- Results fingerprint (sha256 over the results files): `14b08bba2750cdc28f2bad5d58548a65fb5410e9e044cfc0eb397220b93eb58d`
-- Analysis code commit recorded by the run: `06eaf73`
+- Results fingerprint (sha256 over the results files): `ad672ad4da07c71eac7a5ca95985a0425edd3bcf5db43b87886fe636b8a65f95`
+- Analysis code commit recorded by the run: `ad40399`
