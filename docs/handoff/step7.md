@@ -48,3 +48,8 @@ Branch `step7-writeup`. Goal (milestone 1 "done when"): one command refreshes ev
 4. Dashboard re-checked in a real browser on the real results (restart Streamlit first).
 5. No overclaiming: every verdict sentence matches the computed verdict; "lead"/"first" only where the verdict says so (none currently).
 6. `bash scripts/check.sh` PASS. Build report → `docs/reviews/step7_build.md`.
+
+## Build status for validation (2026-10-08)
+- Builder report: `docs/reviews/step7_build.md`. Commits e1f236b, ecf9408, 93f18c0, then main: 06eaf73 (BTC XLU placebo row "Not valid", A29 addendum 2, user decision; `.gitattributes` eol=lf for findings.md), ff2e23f (findings regenerated). 474 tests, check.sh PASS.
+- User acknowledged both post-hoc A29 addenda (labelling only) on 2026-10-08.
+- Main checked the dashboard in a real browser after a Streamlit restart: 0 errors on all 4 pair tabs; BTC shows 4 "Not valid" rows; tabs read "undecided".
