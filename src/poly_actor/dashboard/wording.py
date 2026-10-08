@@ -156,3 +156,54 @@ NOT_IN_PLAN_NOTE = (
     "in chart 2."
 )
 NOT_COMPUTED_NOTE = "This chart was not computed for this stock."
+
+# Glossary: (term, plain words, technical term). These are the wordings with no results;
+# `text.glossary` swaps in the versions that quote the analysis parameters.
+GLOSSARY = (
+    (
+        "Odds",
+        "Polymarket's price for a yes/no outcome, read as a crowd-estimated probability.",
+        "analysis uses changes in the Polymarket signal, never levels",
+    ),
+    (
+        "Who moves first",
+        "Comparing the two series at several time gaps.",
+        "lead-lag cross-correlation",
+    ),
+    ("Link strength", "From -1 to 1. Zero means no link.", "Pearson correlation"),
+    (
+        "Noise zone",
+        "The range that pure chance would produce at any of the time gaps.",
+        "simultaneous band from session-shifted data",
+    ),
+    (
+        "Shaded range",
+        "Where the true average plausibly lies. If it includes zero, the effect could be chance.",
+        "confidence interval",
+    ),
+    (
+        "Ordinary-day band",
+        "What the same chart looks like on randomly picked days without the event.",
+        "random-date band",
+    ),
+    (
+        "Beyond its own price",
+        "Do the odds add anything once we know what Bitcoin itself just did?",
+        "regression with BTC-USD returns as controls",
+    ),
+    (
+        "Scrambled-timing test",
+        "Rerun with the timing shuffled. A real signal should vanish.",
+        "placebo test",
+    ),
+    (
+        "Many-pairs correction",
+        "Raises the bar because we test several pairs at once.",
+        "Benjamini-Hochberg",
+    ),
+    (
+        "Control asset",
+        "A stock that should have no link, used to check that the method isn't inventing patterns.",
+        "negative control",
+    ),
+)

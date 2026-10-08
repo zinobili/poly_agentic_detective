@@ -15,7 +15,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable, Mapping
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -37,6 +37,7 @@ from poly_actor.analysis import (
 )
 from poly_actor.analysis.verdict import BH_Q
 from poly_actor.config import CLEAN_DIR
+from poly_actor.dashboard.contract import ResultsDoc
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class Job:
     extra: dict = field(default_factory=dict)
     exploratory: dict[str, float] = field(default_factory=dict)  # name -> two-sided p
     exploratory_notes: dict[str, str] = field(default_factory=dict)  # name -> caveat
-    doc: dict | None = None  # pair 4 is complete after phase 1
+    doc: ResultsDoc | None = None  # pair 4 is complete after phase 1
 
 
 # ---------------------------------------------------------------- helpers
@@ -245,7 +246,7 @@ def recession_job(panel: pd.DataFrame) -> Job:
 # ---------------------------------------------------------------- phases 2 and 3
 
 
-def assemble(jobs: dict[str, Job]) -> tuple[dict[str, dict], dict]:
+def assemble(jobs: dict[str, Job]) -> tuple[dict[str, ResultsDoc], dict]:
     """BH over the primaries and the exploratory family, then verdicts and contract docs."""
     p_primary = []
     for pid in PRIMARY_ORDER:
@@ -294,7 +295,7 @@ def assemble(jobs: dict[str, Job]) -> tuple[dict[str, dict], dict]:
     return docs, summary
 
 
-def write_all(docs: dict[str, dict], summary: dict, clean_dir: Path) -> None:
+def write_all(docs: dict[str, ResultsDoc], summary: dict, clean_dir: Path) -> None:
     out = clean_dir / "results"
     for pid, doc in docs.items():
         results.write_json({"schema_version": results.SCHEMA_VERSION, **doc}, out / f"{pid}.json")
@@ -324,17 +325,26 @@ def _job(pair_id: str, clean_dir: str) -> Job:
     return recession_job(panel)
 
 
+def _result_of(pair_id: str, future: Future[Job]) -> Job:
+    """A worker's job, re-raising its error with the pair named."""
+    try:
+        return future.result()
+    except Exception as exc:
+        raise RuntimeError(f"analysis job for pair {pair_id!r} failed") from exc
+
+
 def cmd_run(args: argparse.Namespace) -> int:
+    """Run every pair, apply BH and the verdicts, write the results JSON."""
     pairs = (*PRIMARY_ORDER, "us_recession")
     if args.workers > 1:
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
             futures = {p: pool.submit(_job, p, args.clean_dir) for p in pairs}
-            jobs = {p: f.result() for p, f in futures.items()}
+            jobs = {p: _result_of(p, f) for p, f in futures.items()}
     else:
         jobs = {p: _job(p, args.clean_dir) for p in pairs}
     docs, summary = assemble(jobs)
     write_all(docs, summary, Path(args.clean_dir))
-    for pid, doc in docs.items():
+    for pid, doc in docs.items():  # stdout on purpose: the CLI's result; logging is diagnostics
         print(f"{pid}: {doc['verdict']} ({doc['confidence']['level']})")
     return 0
 

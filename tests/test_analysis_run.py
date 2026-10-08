@@ -12,8 +12,15 @@ import numpy as np
 import pytest
 
 import analysis_synth as synth
-from poly_actor.analysis import cpi, models, run, runners, verdict
-from poly_actor.dashboard.contract import VERDICTS, load_results
+from poly_actor.analysis import cpi, models, results, run, runners, verdict
+from poly_actor.dashboard.contract import (
+    VERDICTS,
+    CheckRowDoc,
+    ResultsDoc,
+    XCorrDoc,
+    load_results,
+    parse_results,
+)
 
 PAIRS = ("fed_decision", "bitcoin_monthly_ladder", "us_cpi_inflation", "us_recession")
 P_KEY = re.compile(r"(^p$|^p_|_p$|p_value|permutation_p|p_one|p_two|bh_adjusted|bh_q)")
@@ -114,6 +121,52 @@ def test_primary_ticker_is_written_for_every_pair(written):
         "us_cpi_inflation": "TLT",
         "us_recession": "IWM-SPY",
     }
+
+
+# ---------------------------------------------------------------- the typed contract
+
+
+def test_every_doc_round_trips_through_the_typed_contract(written):
+    """Producer and consumer share `ResultsDoc`: a renamed or dropped key fails here."""
+    _, docs, _ = written
+    for pid, doc in docs.items():
+        raw = results.jsonable(doc)
+        assert set(raw) <= set(ResultsDoc.__annotations__), pid
+        assert ResultsDoc.__required_keys__ <= set(raw), pid
+        assert all(set(r) == set(CheckRowDoc.__annotations__) for r in raw["checklist"])
+        res = parse_results(raw)
+        assert (res.pair_id, res.primary_ticker) == (pid, raw["primary_ticker"])
+        assert (res.verdict, res.verdict_reason) == (raw["verdict"], raw["verdict_reason"])
+        assert res.confidence.__dict__ == raw["confidence"]
+        assert (res.n_events, res.stocks_first) == (raw["n_events"], raw["stocks_first"])
+        assert res.params == raw["params"]
+        assert [r.__dict__ for r in res.checklist] == raw["checklist"]
+        assert set(res.event_study) == set(raw["event_study"])
+        assert res.event_study_notes == (raw.get("event_study_notes") or None)
+        if raw["xcorr"] == results.NOT_IN_PLAN:
+            assert res.xcorr_not_in_plan and res.xcorr is None
+            continue
+        assert set(res.xcorr) == set(raw["xcorr"])
+        for tk, x in raw["xcorr"].items():
+            assert set(x) <= set(XCorrDoc.__annotations__), (pid, tk)
+            assert res.xcorr[tk].lags == tuple(x["lags"])
+            assert (res.xcorr[tk].residualised is None) == ("residualised" not in x)
+
+
+def test_jsonable_names_an_unknown_type():
+    assert results.jsonable({"a": (np.float64("nan"), np.int64(2), True, None)}) == {
+        "a": [None, 2, True, None]
+    }
+    with pytest.raises(TypeError, match="object"):
+        results.jsonable({"a": object()})
+
+
+def test_write_json_leaves_no_temp_file(tmp_path):
+    path = tmp_path / "results" / "x.json"
+    results.write_json({"a": 1.0}, path)
+    results.write_json({"a": 2.0}, path)
+    assert json.loads(path.read_text("utf-8")) == {"a": 2.0}
+    assert [p.name for p in path.parent.iterdir()] == ["x.json"]
 
 
 # ---------------------------------------------------------------- row 11: pair 4
