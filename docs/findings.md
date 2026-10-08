@@ -138,6 +138,9 @@ Intervals are two-sided at the level stated. Primary p-values are one-sided in t
   to every other output that uses the same adjustment (the utilities adjusted timing panel, the
   Bitcoin event charts and the overnight test with the price control). No statistic, verdict or
   correction family changes.
+- **Second A29 addendum (POST-HOC, labelling only).** The Bitcoin check against an unrelated stock
+  (utilities) uses the same adjustment, so its row now reads "Not valid" instead of "Passed".
+  The statistic is still shown. No verdict changes.
 - **A28 (decided before the real run, from synthetic tests only).** The noise band uses robust t
   statistics, the relative placebos (Fed timing shuffle, inflation random dates) gate a verdict
   only when the primary is significant, and the inflation null margin is stricter than its
