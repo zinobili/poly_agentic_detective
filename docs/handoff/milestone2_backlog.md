@@ -10,3 +10,6 @@
 - BTC: re-specify the spot control with bar-aligned sub-hour spot data (each bar's own start and end), as a new pre-registered test.
 - CPI Chart 2 signing window (all 20 releases unsigned; missing vs tiny moves not split).
 - More CPI releases and recession episodes are needed before those pairs can be answered.
+
+## From the step 7 pre-push review (docs/reviews/push_2026-10-08b_crusader.md; majors fixed in ad40399)
+- 13 minors, e.g. docstrings on public functions in `analysis/findings.py`; `Any`/loose dicts where `ResultsDoc` exists; bare `KeyError` on `doc["verdict_reason"]`/`doc["a29_note"]`; unnamed `sig=3`; no test that every exploratory id in `summary.json` has an `EXPLORATORY` spec; `code_version` untested; `cmd_report` prints instead of logging.
