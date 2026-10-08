@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from poly_actor.analysis import verdict
+from poly_actor.analysis.results import write_text_atomic
 from poly_actor.config import ROOT
 from poly_actor.dashboard import text
 from poly_actor.dashboard.contract import PairResults, parse_results, results_path
@@ -45,10 +46,17 @@ class Inputs:
     fingerprint: str  # SHA-256 over the results files (names and bytes, sorted by name)
 
 
+class ReportInputError(ValueError):
+    """A results file exists but cannot be read as JSON; the message names the file."""
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ReportInputError(f"{path}: not valid JSON ({exc})") from exc
     return raw if isinstance(raw, dict) else None
 
 
@@ -495,8 +503,5 @@ def render(inp: Inputs, source: str | None = None) -> str:
 
 
 def write_report(clean_dir: Path, specs: tuple[PairSpec, ...], out: Path = FINDINGS_PATH) -> Path:
-    doc = render(load_inputs(clean_dir, specs))
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write(doc)
+    write_text_atomic(render(load_inputs(clean_dir, specs)), out, newline="\n")
     return out

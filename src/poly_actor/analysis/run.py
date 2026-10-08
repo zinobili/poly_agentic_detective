@@ -388,7 +388,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     """Render docs/findings.md from the results files."""
     try:
         out = findings.write_report(Path(args.clean_dir), load_pair_specs(), Path(args.out))
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, findings.ReportInputError) as exc:
         print(f"report: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {out}")

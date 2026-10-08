@@ -239,6 +239,17 @@ def test_report_cli_writes_the_file(real_like, tmp_path):
     out = tmp_path / "f.md"
     assert run.main(["report", "--clean-dir", str(clean), "--out", str(out)]) == 0
     assert out.read_text("utf-8") == _render(clean)
+    assert [p.name for p in tmp_path.iterdir() if p.suffix == ".tmp"] == []  # atomic write
+
+
+def test_report_cli_names_a_corrupt_results_file(real_like, tmp_path, capsys):
+    clean, _, _ = real_like
+    bad = next((clean / "results").glob("fed_decision.json"))
+    bad.write_text(bad.read_text("utf-8")[:50], encoding="utf-8")  # truncated JSON
+    out = tmp_path / "f.md"
+    assert run.main(["report", "--clean-dir", str(clean), "--out", str(out)]) == 2
+    assert not out.exists()
+    assert "fed_decision.json" in capsys.readouterr().err
 
 
 def test_a_missing_pair_says_not_run(real_like, tmp_path):

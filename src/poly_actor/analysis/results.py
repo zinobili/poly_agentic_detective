@@ -535,12 +535,18 @@ def jsonable(obj: object) -> Any:
 
 
 def write_json(doc: ResultsDoc | dict[str, Any], path: Path) -> None:
-    """Strict JSON, written to a uniquely named temp file and renamed (atomic)."""
+    """Strict JSON, written atomically (see `write_text_atomic`)."""
+    write_text_atomic(json.dumps(jsonable(doc), indent=1, allow_nan=False), path)
+
+
+def write_text_atomic(text: str, path: Path, newline: str | None = None) -> None:
+    """Write to a uniquely named temp file in the same folder, then rename (atomic).
+
+    ``newline`` is passed to `open` (None = platform default, "\\n" = LF everywhere)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(jsonable(doc), indent=1, allow_nan=False)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
             f.write(text)
         os.replace(tmp, path)
     except BaseException:
