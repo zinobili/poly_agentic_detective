@@ -298,6 +298,12 @@ def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
     else:
         beyond = verdict.primary_status(facts)
     a29 = f" Prereg A29: {verdict.A29_NOTE}" if facts.control_misaligned else ""
+    if xlu is None:
+        placebo = "Not run"
+    elif facts.control_misaligned:  # A29 addendum 2: XLU runs with the same spot control
+        placebo = verdict.NOT_VALID
+    else:
+        placebo = "Passed" if facts.placebo_pass else "Failed"
     return [
         _row(
             "Primary test",
@@ -316,14 +322,14 @@ def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
         ),
         _row(
             "Placebo",
-            "Not run" if xlu is None else ("Passed" if facts.placebo_pass else "Failed"),
+            placebo,
             "No link to an unrelated control stock (utilities); a pass is weak evidence at "
             "this sample size",
             ""
             if xlu is None
             else f"XLU: {_fmt(xlu.estimate)} bp per 1% (90% CI "
             f"{_fmt(xlu.ci_low)} to {_fmt(xlu.ci_high)}), two-sided p = {_fmt(xlu.p_two)} "
-            "(passes if > 0.10)",
+            f"(passes if > 0.10).{a29}",
         ),
     ]
 

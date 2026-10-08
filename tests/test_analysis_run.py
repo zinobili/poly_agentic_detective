@@ -87,6 +87,7 @@ def test_a29_btc_publication(written):
     assert "Failed (opposite sign)" not in blob and "rule out" not in blob
     status = {r["name"]: r["status"] for r in btc["checklist"]}
     assert status["Primary test"] == status["Beyond Bitcoin's own price"] == verdict.NOT_VALID
+    assert status["Placebo"] == verdict.NOT_VALID  # A29 addendum 2: XLU uses the same control
     for tk, x in btc["xcorr"].items():  # A29 addendum: every residualised panel, XLU too
         assert x["residualised"].get("note") == verdict.A29_NOTE, tk
     assert btc["event_study"]  # every BTC Chart 2 is residualised on the same control
