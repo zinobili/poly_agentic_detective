@@ -163,26 +163,27 @@ _SHORT = {
     "Moves at the same time": "no head start",
     "No head start": "no head start",
     "No extra information": "no head start",
-    "Too early to tell": "needs data",
+    "Too early to tell": "undecided",  # not "needs data": BTC is undecided by a bias (A29)
     "Descriptive only": "descriptive",
 }
+NOT_RUN_SHORT = "not run"
 
 
 def _short_verdict(r: PairResults | None) -> str:
     if r is None or r.verdict is None:
-        return "needs data"
+        return NOT_RUN_SHORT
     return _SHORT[r.verdict]
 
 
 def tally(results: Results) -> str:
-    """'1 leads, 2 no head start, 1 needs data'; with no results, says so."""
+    """'1 leads, 2 no head start, 1 undecided'; with no results, says so."""
     if all(r is None for r in results.values()):
         return f"{len(results)} pairs waiting for the tests to run"
     counts: dict[str, int] = {}
     for r in results.values():
         key = _short_verdict(r)
         counts[key] = counts.get(key, 0) + 1
-    order = ("leads", "no head start", "needs data", "descriptive")
+    order = ("leads", "no head start", "undecided", "descriptive", NOT_RUN_SHORT)
     return ", ".join(f"{counts[k]} {k}" for k in order if k in counts)
 
 

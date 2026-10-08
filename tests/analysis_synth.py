@@ -229,3 +229,17 @@ def recession_panel(seed: int = 0) -> pd.DataFrame:
     panel["signal_change"] = change
     panel["signal_level"] = np.clip(0.3 + np.cumsum(change), 0.02, 0.98)
     return panel
+
+
+def all_jobs() -> dict:
+    """Phase-1 jobs for the four pairs on synthetic panels (seed 0)."""
+    from poly_actor.analysis import run
+
+    panel, spot = btc_panel(0)
+    cpi_panel, tab, placebo_tab = cpi_inputs(0)
+    return {
+        "fed_decision": run.fed_job(fed_panel(0), {"fomc": set(), "cpi": set()}),
+        "bitcoin_monthly_ladder": run.btc_job(panel, spot),
+        "us_cpi_inflation": run.cpi_job(cpi_panel, tab, placebo_tab),
+        "us_recession": run.recession_job(recession_panel(0)),
+    }

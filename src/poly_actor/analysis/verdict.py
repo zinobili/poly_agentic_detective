@@ -56,7 +56,9 @@ A29_NOTE = (
     "test, which is about 30 minutes off the ETF's hourly bar and biases the result."
 )
 NOT_VALID = "Not valid"
-A29_CHART1_TICKERS = frozenset({"IBIT", "COIN", "MSTR"})  # residualised Chart 1 panels noted
+# A29 item 3 names the IBIT, COIN and MSTR residualised panels; the A29 addendum (2026-10-08,
+# step 7, labelling only) extends the note to every output residualised on the same spot
+# control: the XLU residualised panel, every BTC Chart 2 and the overnight spot-gap test.
 
 
 @dataclass(frozen=True)

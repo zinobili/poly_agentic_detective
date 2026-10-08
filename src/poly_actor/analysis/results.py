@@ -298,6 +298,12 @@ def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
     else:
         beyond = verdict.primary_status(facts)
     a29 = f" Prereg A29: {verdict.A29_NOTE}" if facts.control_misaligned else ""
+    if xlu is None:
+        placebo = "Not run"
+    elif facts.control_misaligned:  # A29 addendum 2: XLU runs with the same spot control
+        placebo = verdict.NOT_VALID
+    else:
+        placebo = "Passed" if facts.placebo_pass else "Failed"
     return [
         _row(
             "Primary test",
@@ -316,31 +322,29 @@ def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
         ),
         _row(
             "Placebo",
-            "Not run" if xlu is None else ("Passed" if facts.placebo_pass else "Failed"),
+            placebo,
             "No link to an unrelated control stock (utilities); a pass is weak evidence at "
             "this sample size",
             ""
             if xlu is None
             else f"XLU: {_fmt(xlu.estimate)} bp per 1% (90% CI "
             f"{_fmt(xlu.ci_low)} to {_fmt(xlu.ci_high)}), two-sided p = {_fmt(xlu.p_two)} "
-            "(passes if > 0.10)",
+            f"(passes if > 0.10).{a29}",
         ),
     ]
 
 
 def _btc_xcorr(core: BtcCore, note: dict[str, str]) -> dict[str, XCorrDoc]:
+    """Raw and spot-residualised Chart 1; every residualised panel carries the A29 note."""
     xc: dict[str, XCorrDoc] = {}
     for tk, raw in core.xcorr_raw.items():
-        resid = xcorr_json(core.xcorr_resid[tk])
-        if tk in verdict.A29_CHART1_TICKERS:  # A29 item 3 names these three panels
-            resid.update(note)
-        xc[tk] = {**xcorr_json(raw), "residualised": resid}
+        xc[tk] = {**xcorr_json(raw), "residualised": {**xcorr_json(core.xcorr_resid[tk]), **note}}
     return xc
 
 
 def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> ResultsDoc:
     note = {"note": verdict.A29_NOTE} if facts.control_misaligned else {}
-    return _base_doc(
+    doc = _base_doc(
         ("bitcoin_monthly_ladder", "IBIT"),
         facts,
         bh,
@@ -360,6 +364,9 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
         },
         extra=extra,
     )
+    for study in doc["event_study"].values():  # Chart 2 is residualised on the same control
+        study.update(note)
+    return doc
 
 
 # ---------------------------------------------------------------- CPI

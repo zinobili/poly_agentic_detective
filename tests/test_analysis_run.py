@@ -26,23 +26,10 @@ PAIRS = ("fed_decision", "bitcoin_monthly_ladder", "us_cpi_inflation", "us_reces
 P_KEY = re.compile(r"(^p$|^p_|_p$|p_value|permutation_p|p_one|p_two|bh_adjusted|bh_q)")
 
 
-def _jobs() -> dict[str, run.Job]:
-    panel, spot = synth.btc_panel(0)
-    cpi_panel, tab, placebo_tab = synth.cpi_inputs(0)
-    return {
-        "fed_decision": run.fed_job(synth.fed_panel(0), {"fomc": set(), "cpi": set()}),
-        "bitcoin_monthly_ladder": run.btc_job(panel, spot),
-        "us_cpi_inflation": run.cpi_job(cpi_panel, tab, placebo_tab),
-        "us_recession": run.recession_job(synth.recession_panel(0)),
-    }
-
-
 @pytest.fixture(scope="module")
-def written(tmp_path_factory) -> tuple[Path, dict, dict]:
-    clean = tmp_path_factory.mktemp("clean")
-    docs, summary = run.assemble(_jobs())
-    run.write_all(docs, summary, clean)
-    return clean, docs, summary
+def written(analysis_written) -> tuple[Path, dict, dict]:
+    """The synthetic run (session-scoped in conftest, shared with the findings tests)."""
+    return analysis_written
 
 
 def _strict(path: Path) -> dict:
@@ -100,9 +87,12 @@ def test_a29_btc_publication(written):
     assert "Failed (opposite sign)" not in blob and "rule out" not in blob
     status = {r["name"]: r["status"] for r in btc["checklist"]}
     assert status["Primary test"] == status["Beyond Bitcoin's own price"] == verdict.NOT_VALID
-    for tk, x in btc["xcorr"].items():
-        noted = x["residualised"].get("note") == verdict.A29_NOTE
-        assert noted == (tk in verdict.A29_CHART1_TICKERS), tk
+    assert status["Placebo"] == verdict.NOT_VALID  # A29 addendum 2: XLU uses the same control
+    for tk, x in btc["xcorr"].items():  # A29 addendum: every residualised panel, XLU too
+        assert x["residualised"].get("note") == verdict.A29_NOTE, tk
+    assert btc["event_study"]  # every BTC Chart 2 is residualised on the same control
+    assert all(es.get("note") == verdict.A29_NOTE for es in btc["event_study"].values())
+    assert "btc_overnight_IBIT_spot_control" in run.A29_EXPLORATORY
     assert all("note" not in {k for k in x if k != "residualised"} for x in btc["xcorr"].values())
     noted = {r["test"] for r in summary["exploratory_family"] if "note" in r}
     assert noted == set(run.A29_EXPLORATORY)

@@ -193,6 +193,12 @@ def event_study_title(pair_id: str, es: EventStudy | None, preview: bool = False
     if es is None:
         return NOT_RUN
     info, stock = pair_info(pair_id), ticker_label(es.ticker)
+    if es.note:
+        return preview_title(
+            f"Not read as evidence: the chart for {stock} around {info.events}, after taking "
+            "out Bitcoin's own price, is biased",
+            preview,
+        )
     moved = any(es.ci_low[i] > 0 or es.ci_high[i] < 0 for i in _after_zero(es))
     lead = f"On {info.events}" if es.unit == "days" else f"Around {info.events}"
     if moved:
@@ -225,6 +231,8 @@ def event_study_how_to_read(es: EventStudy | None = None) -> str:
 def event_study_so_what(es: EventStudy | None) -> str:
     if es is None:
         return NOTHING_TO_CONCLUDE
+    if es.note:
+        return es.note
     return "Use this to see whether the stock reacts after the odds do, and for how long."
 
 

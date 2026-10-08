@@ -202,6 +202,8 @@ def _render_chart2(pair_id: str, res: PairResults | None, ticker: str) -> None:
             _not_shown(state, text.event_study_note(res, ticker))
             return
         st.subheader(text.event_study_title(pair_id, es, text.is_preview(res)))
+        if es.note:
+            st.warning(es.note)
         st.write(f"**How to read.** {text.event_study_how_to_read(es)}")
         st.plotly_chart(charts.event_study_figure(es), width="stretch")
         st.write(f"**So what.** {text.event_study_so_what(es)}")
