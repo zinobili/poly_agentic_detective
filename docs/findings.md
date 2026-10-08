@@ -73,7 +73,7 @@ Intervals are two-sided at the level stated. Primary p-values are one-sided in t
 |---|---|---|
 | Odds an hour earlier help predict the Bitcoin ETF beyond Bitcoin's own price | Not valid | IBIT on Δln(ladder) at t-1 with BTC-USD lags 0-3: -39.9 bp per 1% (90% CI -48.8 to -31), one-sided HAC p = 1, n = 1317. Prereg A29: Not read as evidence: this uses the same adjustment for Bitcoin's own price as the main test, which is about 30 minutes off the ETF's hourly bar and biases the result. |
 | The odds add something beyond Bitcoin's own price | Not valid | without the spot control: -6.39 bp per 1% (one-sided p = 0.846); with it: one-sided p = 1. Prereg A29: Not read as evidence: this uses the same adjustment for Bitcoin's own price as the main test, which is about 30 minutes off the ETF's hourly bar and biases the result. |
-| No link to an unrelated control stock (utilities); a pass is weak evidence at this sample size | Passed | XLU: -1.01 bp per 1% (90% CI -6.04 to 4.01), two-sided p = 0.74 (passes if > 0.10) |
+| No link to an unrelated control stock (utilities); a pass is weak evidence at this sample size | Not valid | XLU: -1.01 bp per 1% (90% CI -6.04 to 4.01), two-sided p = 0.74 (passes if > 0.10). Prereg A29: Not read as evidence: this uses the same adjustment for Bitcoin's own price as the main test, which is about 30 minutes off the ETF's hourly bar and biases the result. |
 | Holds after the many-pairs correction | Failed | Benjamini-Hochberg q = 0.1 over the three primary tests (Fed, Bitcoin, inflation): adjusted p = 1 |
 | Enough data for the test | Passed | 1317 usable rows in 254 sessions (minimum 500 and 60) |
 | Holds in robustness checks (clustered errors, without the biggest moves) | Not valid | R1 fails; R2 fails; R3 not applicable (sign unchanged and one-sided p < 0.10). Prereg A29: Not read as evidence: this uses the same adjustment for Bitcoin's own price as the main test, which is about 30 minutes off the ETF's hourly bar and biases the result. |
@@ -183,5 +183,5 @@ python -m poly_actor.analysis report          # this report only, from the exist
 
 Regenerating from the same results files gives a byte-identical report.
 
-- Results fingerprint (sha256 over the results files): `8f6602a0ff8dc8225395334593b5f92b98561e87ecf063106b5d9cf4a5da8462`
-- Analysis code commit recorded by the run: `e1f236b`
+- Results fingerprint (sha256 over the results files): `14b08bba2750cdc28f2bad5d58548a65fb5410e9e044cfc0eb397220b93eb58d`
+- Analysis code commit recorded by the run: `06eaf73`
