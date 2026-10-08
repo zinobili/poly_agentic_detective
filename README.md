@@ -10,14 +10,26 @@ together with related stock prices?**
 
 ## Status
 
-Work in progress (milestone 1). See [`docs/progress.md`](docs/progress.md) for the current step and
-[`docs/milestone1_plan.md`](docs/milestone1_plan.md) for the plan. No findings have been published yet.
+Milestone 1 (lead, lag or move together?) is in its write-up step. See
+[`docs/progress.md`](docs/progress.md) for the current step and
+[`docs/milestone1_plan.md`](docs/milestone1_plan.md) for the plan.
 
-| Step | What |
-|---|---|
-| 0–2 | Setup, data feasibility check, pre-registered market→ticker pairs |
-| 3 | Ingestion of price data (in progress) |
-| 4–7 | Alignment, dashboard, statistical analysis, write-up |
+| Step | What | Status |
+|---|---|---|
+| 0–2 | Setup, data feasibility check, pre-registered market→ticker pairs | done |
+| 3 | Ingestion of Polymarket and stock price history | done |
+| 4 | Alignment into hourly panels (no look-ahead, market hours only) | done |
+| 5 | Dashboard for a lay reader | done |
+| 6 | Pre-registered statistical analysis | done |
+| 7 | Write-up: generated findings report, one-command refresh | in progress |
+
+## Findings
+
+The per-pair answers, with effect sizes, confidence intervals, the multiple-testing correction,
+what the results do **not** show and every amendment made after seeing results, are in
+[`docs/findings.md`](docs/findings.md). That file is generated from the analysis results by code
+(`python -m poly_actor.analysis report`), so this README states no verdicts or numbers of its own.
+It is not financial advice.
 
 ## Method in brief
 
@@ -43,14 +55,26 @@ No API keys are needed for the current data sources. Optional keys for future so
 
 ## Run the pipeline and the dashboard
 
+One command refreshes everything: it fetches new data, rebuilds the panels, re-runs the analysis
+and regenerates `docs/findings.md`. It stops at the first stage that fails and names it.
+
 ```bash
-.venv/Scripts/python.exe -m poly_actor.ingest run        # fetch raw data into data/raw/
-.venv/Scripts/python.exe -m poly_actor.align run         # build hourly panels in data/clean/
+.venv/Scripts/python.exe -m poly_actor.refresh --workers 4    # ingest -> align -> analysis -> report
+.venv/Scripts/python.exe -m poly_actor.refresh --dry-run      # print the stages; run nothing
 .venv/Scripts/streamlit.exe run src/poly_actor/dashboard/app.py   # opens on http://localhost:8501
 ```
 
-Until the analysis step writes `data/clean/results/`, the dashboard shows the raw data and marks every
-analysis section "Not run yet".
+The stages can also be run one at a time:
+
+```bash
+.venv/Scripts/python.exe -m poly_actor.ingest run --workers 4    # fetch raw data into data/raw/
+.venv/Scripts/python.exe -m poly_actor.align run                 # build hourly panels in data/clean/
+.venv/Scripts/python.exe -m poly_actor.analysis run --workers 4  # tests -> data/clean/results/*.json
+.venv/Scripts/python.exe -m poly_actor.analysis report           # results -> docs/findings.md
+```
+
+Until the analysis writes `data/clean/results/`, the dashboard shows the raw data and marks every
+analysis section "Not run yet". Restart Streamlit after a refresh if it was already running.
 
 ## Tests and lint
 

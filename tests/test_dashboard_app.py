@@ -91,7 +91,7 @@ def test_cards_open_the_pair_without_reset(monkeypatch):
 
 def test_tabs_show_name_and_short_verdict(monkeypatch):
     at = run_app(monkeypatch, FIXTURES)
-    assert at.radio[0].options[0] == "Fed · needs data"
+    assert at.radio[0].options[0] == "Fed · not run"
 
 
 def test_page_with_results_computes_titles(monkeypatch, tmp_path):

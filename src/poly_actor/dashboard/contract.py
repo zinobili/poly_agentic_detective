@@ -25,7 +25,8 @@ Shape (schema 2; timestamps ISO-8601, tz-aware UTC)::
                               "paths": [[...], ...], "gap_marks": [[3], ...],  # optional
                               "label": "...", "compare": {"label", "mean", "ci_low",
                               "ci_high"},                             # optional
-                              "n_unsigned": 0, "event_times": [...]}},
+                              "n_unsigned": 0, "event_times": [...],
+                              "note": "..."}},                        # optional caveat (A29)
       "event_study_notes": {"TLT": "Too few events to draw this chart: ..."},  # optional
       "checklist": [{"name", "status": one of STATUSES, "plain", "technical"}]
     }
@@ -182,6 +183,7 @@ class EventStudy:
     label: str | None = None
     compare: Compare | None = None
     n_unsigned: int | None = None
+    note: str | None = None  # caveat: the chart is shown but not read as evidence (A29)
 
 
 @dataclass(frozen=True)
@@ -450,6 +452,7 @@ def _event_study(ticker: str, raw: object) -> EventStudy | None:
         label=_text(raw.get("label")),
         compare=compare,
         n_unsigned=_count(raw.get("n_unsigned")),
+        note=_text(raw.get("note")),
     )
 
 

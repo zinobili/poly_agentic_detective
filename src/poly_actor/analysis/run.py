@@ -1,18 +1,21 @@
-"""CLI: python -m poly_actor.analysis run [--workers N] | counts
+"""CLI: python -m poly_actor.analysis run [--workers N] | counts | report
 
 `run` writes data/clean/results/<pair_id>.json (dashboard contract) and results/summary.json
-(BH tables). Phase 1 runs one job per pair (in parallel with --workers); phase 2 applies BH
-over the three inferential primaries (A12, A27 rule 6) and, separately, over the exploratory
-family; phase 3 computes verdicts and writes.
+(BH tables, plus the code commit that produced them). Phase 1 runs one job per pair (in
+parallel with --workers); phase 2 applies BH over the three inferential primaries (A12, A27
+rule 6) and, separately, over the exploratory family; phase 3 computes verdicts and writes.
 
 `counts` prints sample sizes from flags and data presence only (no return values are read
 into any statistic); it is safe before the analysis settings are final.
+
+`report` renders docs/findings.md from the results files (`findings.py`); no statistics.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -26,6 +29,7 @@ import pandas as pd
 from poly_actor.align import pipeline
 from poly_actor.analysis import cpi as cpi_mod
 from poly_actor.analysis import (
+    findings,
     inputs,
     models,
     primary,
@@ -36,13 +40,21 @@ from poly_actor.analysis import (
     verdict,
 )
 from poly_actor.analysis.verdict import BH_Q
-from poly_actor.config import CLEAN_DIR
+from poly_actor.config import CLEAN_DIR, ROOT
 from poly_actor.dashboard.contract import ResultsDoc
+from poly_actor.dashboard.load import load_pair_specs
 
 log = logging.getLogger(__name__)
 
 PRIMARY_ORDER = ("fed_decision", "bitcoin_monthly_ladder", "us_cpi_inflation")
-A29_EXPLORATORY = ("btc_COIN_lag1", "btc_MSTR_lag1", "btc_IBIT_lag2", "btc_IBIT_lag3")
+# Exploratory tests that use the misaligned spot control (prereg A29 item 3 and its addendum).
+A29_EXPLORATORY = (
+    "btc_COIN_lag1",
+    "btc_MSTR_lag1",
+    "btc_IBIT_lag2",
+    "btc_IBIT_lag3",
+    "btc_overnight_IBIT_spot_control",
+)
 
 
 @dataclass
@@ -170,7 +182,11 @@ def btc_job(panel: pd.DataFrame, spot_at: Callable[[np.ndarray], np.ndarray]) ->
 
 
 def _spot_gap(panel, grid, spot_at) -> np.ndarray:
-    """log spot at each session open minus log spot at the previous session's close."""
+    """log spot at each session open minus log spot at the previous session's close.
+
+    Prereg A29 (addendum): the spot as-of at the 09:30 ET open is the 09:00 hourly close, so
+    this control is about 30 min off the IBIT gap, like the primary's control. The tests that
+    use it (`btc_overnight_IBIT_spot_control`, the BTC Chart 2 gaps) carry the A29 note."""
     opens = panel[panel["is_session_open"].astype(bool)].set_index("session")["ts_start"]
     open_s = pd.Series(grid.sessions).map(opens)
     open_s = ((open_s - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1)).to_numpy()
@@ -343,9 +359,39 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         jobs = {p: _job(p, args.clean_dir) for p in pairs}
     docs, summary = assemble(jobs)
+    summary["code_commit"] = code_version()
     write_all(docs, summary, Path(args.clean_dir))
     for pid, doc in docs.items():  # stdout on purpose: the CLI's result; logging is diagnostics
         print(f"{pid}: {doc['verdict']} ({doc['confidence']['level']})")
+    return 0
+
+
+def code_version() -> str:
+    """Short commit of the checked-out code, with '-dirty' when src/ or config/ has uncommitted
+    changes; 'unknown' without git."""
+
+    def git(*cmd: str) -> str:
+        out = subprocess.run(  # noqa: S603 (fixed argv, no shell)
+            ["git", *cmd], cwd=ROOT, capture_output=True, text=True, check=True, timeout=30
+        )
+        return out.stdout.strip()
+
+    try:
+        sha = git("rev-parse", "--short", "HEAD")
+        dirty = git("status", "--porcelain", "--", "src", "config")
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return f"{sha}-dirty" if dirty else sha
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render docs/findings.md from the results files."""
+    try:
+        out = findings.write_report(Path(args.clean_dir), load_pair_specs(), Path(args.out))
+    except FileNotFoundError as exc:
+        print(f"report: {exc}", file=sys.stderr)
+        return 2
+    print(f"wrote {out}")
     return 0
 
 
@@ -372,6 +418,10 @@ def main(argv: list[str] | None = None) -> int:
     cnt = sub.add_parser("counts", help="sample sizes from flags only")
     cnt.add_argument("--clean-dir", default=str(CLEAN_DIR))
     cnt.set_defaults(func=cmd_counts)
+    rep = sub.add_parser("report", help="render docs/findings.md from the results JSON")
+    rep.add_argument("--clean-dir", default=str(CLEAN_DIR))
+    rep.add_argument("--out", default=str(findings.FINDINGS_PATH), help="markdown output path")
+    rep.set_defaults(func=cmd_report)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     return args.func(args)

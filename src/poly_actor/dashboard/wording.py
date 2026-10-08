@@ -111,7 +111,7 @@ VERDICT_SO_WHAT = {
     "Moves at the same time": "The odds and the stock react together, so the odds give no "
     "early warning.",
     "No head start": "In this data the odds gave no early warning. A lead big enough to be "
-    "useful would most likely have shown up.",
+    "useful would probably have shown up, but a smaller one can't be ruled out.",
     "No extra information": "The odds add nothing to what Bitcoin's own price already tells you.",
     "Too early to tell": "There is no reliable answer yet, so don't use the odds for timing on "
     "the strength of this.",

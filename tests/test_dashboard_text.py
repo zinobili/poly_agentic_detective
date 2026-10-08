@@ -2,7 +2,7 @@
 
 from dashboard_helpers import granger_row, results, xcorr
 from poly_actor.dashboard import text
-from poly_actor.dashboard.contract import CheckRow, Confidence, XCorr
+from poly_actor.dashboard.contract import CheckRow, Confidence, EventStudy, XCorr, parse_results
 from poly_actor.dashboard.wording import PAIR_INFO
 
 PARAMS = {
@@ -143,7 +143,7 @@ def test_tally_and_headline_from_verdicts():
         "c": results(verdict="No extra information"),
         "d": None,
     }
-    assert text.tally(res) == "1 leads, 2 no head start, 1 needs data"
+    assert text.tally(res) == "1 leads, 2 no head start, 1 not run"
     assert text.headline(res) == "Polymarket odds moved ahead of stocks in 1 of 4 pairs we tested"
     assert "Analysis not run for 1 of 4 pairs" in text.banner(res)
 
@@ -246,7 +246,7 @@ def test_headline_mix_of_undecided_and_no_extra_information_does_not_overclaim()
         "So far no pair shows Polymarket odds moving ahead of stocks; 2 of 3 are still "
         "undecided or descriptive only"
     )
-    assert text.tally(res) == "1 no head start, 1 needs data, 1 descriptive"
+    assert text.tally(res) == "1 no head start, 1 undecided, 1 descriptive"
 
 
 def test_headline_all_decided_nulls():
@@ -314,3 +314,50 @@ def test_opposite_sign_status_line():
 def test_stocks_first_note_only_when_flagged():
     assert text.stocks_first_note(results(stocks_first=True)).startswith("Exploratory")
     assert text.stocks_first_note(results(stocks_first=False)) is None
+
+
+# ---------------------------------------------------------------- step 7 carried minors
+
+
+def _btc_chart2(note: str | None) -> EventStudy:
+    # a clear move after bar 0: the title would claim a move if it were read
+    return EventStudy("IBIT", ("0", "+1"), (0.5, 0.6), (0.2, 0.3), (0.8, 0.9), (), note=note)
+
+
+def test_biased_chart2_is_not_read():
+    """A29 addendum: a BTC Chart 2 residualised on the misaligned control gives no reading."""
+    biased = _btc_chart2("Not read as evidence: biased")
+    title = text.event_study_title("bitcoin_monthly_ladder", biased)
+    assert title.startswith("Not read as evidence") and "unlikely to be chance" not in title
+    assert text.event_study_so_what(biased) == "Not read as evidence: biased"
+    clean = _btc_chart2(None)
+    assert "unlikely to be chance" in text.event_study_title("bitcoin_monthly_ladder", clean)
+
+
+def test_event_study_note_is_parsed_from_the_results():
+    raw = {
+        "pair_id": "bitcoin_monthly_ladder",
+        "event_study": {
+            "IBIT": {
+                "steps": ["0", "+1"],
+                "mean": [0.1, 0.2],
+                "ci_low": [0.0, 0.1],
+                "ci_high": [0.2, 0.3],
+                "note": "Not read as evidence",
+            }
+        },
+    }
+    assert parse_results(raw).event_study["IBIT"].note == "Not read as evidence"
+
+
+def test_tab_label_for_an_a29_verdict_is_undecided_not_needs_data():
+    btc = results("bitcoin_monthly_ladder", verdict="Too early to tell")
+    assert text.tab_label("bitcoin_monthly_ladder", btc) == "Bitcoin · undecided"
+    assert text.tab_label("bitcoin_monthly_ladder", None) == "Bitcoin · not run"
+
+
+def test_no_head_start_so_what_is_hedged():
+    """step 6 r2 m3: next to Low confidence, the wording leaves room for a smaller lead."""
+    words = text.so_what(results(verdict="No head start"))
+    assert "would probably have shown up" in words and "can't be ruled out" in words
+    assert "most likely" not in words

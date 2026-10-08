@@ -329,18 +329,16 @@ def _btc_rows(core: BtcCore, facts: Facts) -> list[CheckRowDoc]:
 
 
 def _btc_xcorr(core: BtcCore, note: dict[str, str]) -> dict[str, XCorrDoc]:
+    """Raw and spot-residualised Chart 1; every residualised panel carries the A29 note."""
     xc: dict[str, XCorrDoc] = {}
     for tk, raw in core.xcorr_raw.items():
-        resid = xcorr_json(core.xcorr_resid[tk])
-        if tk in verdict.A29_CHART1_TICKERS:  # A29 item 3 names these three panels
-            resid.update(note)
-        xc[tk] = {**xcorr_json(raw), "residualised": resid}
+        xc[tk] = {**xcorr_json(raw), "residualised": {**xcorr_json(core.xcorr_resid[tk]), **note}}
     return xc
 
 
 def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict) -> ResultsDoc:
     note = {"note": verdict.A29_NOTE} if facts.control_misaligned else {}
-    return _base_doc(
+    doc = _base_doc(
         ("bitcoin_monthly_ladder", "IBIT"),
         facts,
         bh,
@@ -360,6 +358,9 @@ def btc_result(core: BtcCore, facts: Facts, bh: dict, studies: dict, extra: dict
         },
         extra=extra,
     )
+    for study in doc["event_study"].values():  # Chart 2 is residualised on the same control
+        study.update(note)
+    return doc
 
 
 # ---------------------------------------------------------------- CPI

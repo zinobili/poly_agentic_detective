@@ -6,7 +6,7 @@ Agreed with the user on 2026-10-03. The reference mockup is [dashboard_mockup.ht
 
 ## Page structure (top to bottom)
 1. **Banner** (only while any number is a placeholder): "Made-up numbers".
-2. **Headline answer:** the cross-pair verdict in one sentence. Below it, the question in plain words and a tally, e.g. "1 leads, 2 no head start, 1 needs data".
+2. **Headline answer:** the cross-pair verdict in one sentence. Below it, the question in plain words and a tally, e.g. "1 leads, 2 no head start, 1 undecided".
 3. **Scorecard:** one card per pair. Each card has a plain question, a verdict badge, a one-sentence finding, a confidence meter and a "See the evidence →" link. Clicking a card opens that pair's evidence.
 4. **What counts as evidence:** a "Counts" list, a "Doesn't count" list, and a panel saying that "no head start" is a result too.
 5. **Pair evidence:**
