@@ -13,3 +13,8 @@
 
 ## From the step 7 pre-push review (docs/reviews/push_2026-10-08b_crusader.md; majors fixed in ad40399)
 - 13 minors, e.g. docstrings on public functions in `analysis/findings.py`; `Any`/loose dicts where `ResultsDoc` exists; bare `KeyError` on `doc["verdict_reason"]`/`doc["a29_note"]`; unnamed `sig=3`; no test that every exploratory id in `summary.json` has an `EXPLORATORY` spec; `code_version` untested; `cmd_report` prints instead of logging.
+
+## From the 2026-10-21 pre-push review (docs/reviews/push_2026-10-21_crusader.md)
+- `pyproject.toml` pins `streamlit>=1.40` but `dashboard/app.py` uses `st.context.theme` (newer); raise the floor.
+- `dashboard/style.py` builds CSS with `%` formatting; a literal `%` in the CSS would raise. Use token replace or note it.
+- Dashboard test covers `page_css` but not the `main()` theme wiring.
