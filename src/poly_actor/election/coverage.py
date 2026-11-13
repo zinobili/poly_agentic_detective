@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 
 from poly_actor.align.grid import bar_table, epoch_seconds
-from poly_actor.election.config import ElectionConfig
+from poly_actor.election.config import SIGNALS, ElectionConfig
+
+MINUTE_S = 60
 
 
 def age_stats(age: pd.Series) -> dict:
@@ -80,7 +82,8 @@ def ticker_bars(hourly: pd.DataFrame, sessions: pd.DataFrame, unmatched: pd.Data
 def stamp_offsets(points: dict[str, pd.DataFrame], signals: list[str]) -> dict:
     """Seconds after the grid line at which fid-60 / fid-10 points are stamped (lesson 10)."""
     out = {}
-    for fid, step in ((60, 3600), (10, 600)):
+    for fid in (60, 10):
+        step = fid * MINUTE_S
         offs = np.concatenate(
             [
                 (d.loc[d["fidelity"] == fid, "t"] % step).to_numpy()
@@ -126,13 +129,13 @@ def coverage_report(
     rep["odds_hourly"] = odds_stats(tables["odds_hourly"], "bar_end_ts", life)
     night = tables["night_5m"]
     nights = {}
-    for k in ("p_sen", "p_house", "p_sweep", "p_rr"):
+    for k in SIGNALS:
         w = night[night["in_window"] & (night["ticker"] == "NQ=F")]
         nights[k] = {
             "rows_in_window": int(len(w)),
             "missing_share": float(w[k].isna().mean()),
             **age_stats(w[f"age_{k}"]),
-        }  # noqa: E501
+        }
     rep["night_5m_odds_NQ_in_window"] = nights
     mor = tables["moratorium_daily"]
     rep["moratorium_daily"] = {

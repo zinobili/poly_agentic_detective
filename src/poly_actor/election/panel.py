@@ -25,7 +25,7 @@ from poly_actor.election import ingest as ing
 from poly_actor.election.config import SIGNALS, ElectionConfig
 from poly_actor.pairs import ET
 
-SESSION_FIELDS = ["session", "close_s"]
+BAR_5M_S = 300  # futures bar length; bars are stamped at start + BAR_5M_S
 
 
 def utc(seconds) -> pd.Series:
@@ -177,7 +177,7 @@ def build_night(
         if not len(b):
             continue
         start = epoch_seconds(b["ts"])
-        end = start + 300
+        end = start + BAR_5M_S
         keep = (end > lo - m) & (end <= hi + m)
         d = pd.DataFrame({"ticker": tk, "start_s": start[keep], "end_s": end[keep]})
         o, c = b["open"].to_numpy()[keep], b["close"].to_numpy()[keep]
@@ -194,7 +194,7 @@ def build_night(
     for k in keys:
         q = book.asof(k, inst)
         out[k], out[f"age_{k}"] = q.p, q.age_s
-        consecutive = out.groupby("ticker")["end_s"].diff() == 300
+        consecutive = out.groupby("ticker")["end_s"].diff() == BAR_5M_S
         out[f"d{k}"] = out.groupby("ticker")[k].diff().where(consecutive)
     out["in_window"] = (out["end_s"] > lo) & (out["end_s"] <= hi)
     out["bar_start_ts"] = utc(out["start_s"]).to_numpy()

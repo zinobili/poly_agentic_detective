@@ -86,11 +86,19 @@ def parse_bars(df: pd.DataFrame, start_ts: int, end_ts: int) -> pd.DataFrame:
     return out
 
 
+FETCH_ATTEMPTS = 3  # tries per window before giving up
+FETCH_BACKOFF_S = 2.0  # first backoff; doubles per attempt
+
+
 def fetch_bars(
     ticker: str,
     start_ts: int,
     end_ts: int,
     sleep: Callable[[float], None] = time.sleep,
+    *,
+    interval: str = "1h",
+    auto_adjust: bool = False,
+    attempts: int = FETCH_ATTEMPTS,
 ) -> pd.DataFrame:
     """Thin network call: the raw yfinance frame for [start, end). Retries on exceptions
     or empty frames with short backoff; the caller checks row counts."""
@@ -100,17 +108,17 @@ def fetch_bars(
     end = datetime.fromtimestamp(end_ts, UTC)
     last: Exception | None = None
     df = pd.DataFrame()
-    for attempt in range(3):
+    for attempt in range(attempts):
         try:
             df = yf.Ticker(ticker).history(
-                start=start, end=end, interval="1h", auto_adjust=False, actions=False
+                start=start, end=end, interval=interval, auto_adjust=auto_adjust, actions=False
             )
             if len(df):
                 return df
         except Exception as exc:  # yfinance raises assorted types
             last = exc
-        if attempt < 2:  # no pointless sleep after the last attempt
-            sleep(2.0 * 2**attempt)
+        if attempt < attempts - 1:  # no pointless sleep after the last attempt
+            sleep(FETCH_BACKOFF_S * 2**attempt)
     if last:
         raise IngestError(f"yfinance error for {ticker}: {last!r}")
     return df

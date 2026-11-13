@@ -22,7 +22,6 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -94,38 +93,26 @@ def yf_tasks(cfg: ElectionConfig) -> list[YfTask]:
     return out
 
 
+YF_ATTEMPTS = 4  # one more than milestone 1: 5m and 1d pulls hit more silent empty frames
+
+
 def fetch_yf(
     task: YfTask,
     start_s: int,
     end_s: int,
     sleep: Callable[[float], None] = time.sleep,
 ) -> pd.DataFrame:
-    """Thin network call for one window. Retries exceptions and silent empty frames with
-    exponential backoff; returns the (possibly empty) frame, the caller checks row counts."""
-    import yfinance as yf
-
-    start = datetime.fromtimestamp(start_s, UTC)
-    end = datetime.fromtimestamp(end_s, UTC)
-    last: Exception | None = None
-    df = pd.DataFrame()
-    for attempt in range(4):
-        try:
-            df = yf.Ticker(task.ticker).history(
-                start=start,
-                end=end,
-                interval=task.interval,
-                auto_adjust=task.auto_adjust,
-                actions=False,
-            )
-            if len(df):
-                return df
-        except Exception as exc:  # yfinance raises assorted types
-            last = exc
-        if attempt < 3:
-            sleep(2.0 * 2**attempt)
-    if last:
-        raise IngestError(f"yfinance error for {task.ticker}: {last!r}")
-    return df
+    """Thin network call for one window: `stocks.fetch_bars` (the single retry/backoff loop)
+    at this task's interval and adjustment. The caller checks row counts."""
+    return stocks.fetch_bars(
+        task.ticker,
+        start_s,
+        end_s,
+        sleep,
+        interval=task.interval,
+        auto_adjust=task.auto_adjust,
+        attempts=YF_ATTEMPTS,
+    )
 
 
 @dataclass

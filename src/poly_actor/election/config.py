@@ -22,6 +22,7 @@ CLEAN_ELECTION = CLEAN_DIR / "election"
 
 SIGNALS = ("p_sen", "p_house", "p_sweep", "p_rr")
 AI_SUBS = ("semis", "hyperscalers", "power_infra", "software")
+BASKET_SIZE = 29  # names per basket (AI and placebo), fixed by the pre-registration
 
 
 @dataclass(frozen=True)
@@ -105,9 +106,11 @@ class ElectionConfig:
     def validate(self) -> None:
         """Hard structural checks (also run by the tests)."""
         ai, pl = self.basket("ai"), self.basket("placebo")
-        if len(ai) != 29 or len(pl) != 29:
-            raise ValueError(f"expected 29 + 29 names, got {len(ai)} + {len(pl)}")
-        if set(ai) & set(pl) or len(set(ai + pl)) != 58:
+        if len(ai) != BASKET_SIZE or len(pl) != BASKET_SIZE:
+            raise ValueError(
+                f"expected {BASKET_SIZE} + {BASKET_SIZE} names, got {len(ai)} + {len(pl)}"
+            )
+        if set(ai) & set(pl) or len(set(ai + pl)) != 2 * BASKET_SIZE:
             raise ValueError("ticker duplicated or present in both baskets")
         if {s.sub for s in self.universe if s.basket == "ai"} != set(AI_SUBS):
             raise ValueError("AI universe must have exactly the 4 pre-registered sub-baskets")
