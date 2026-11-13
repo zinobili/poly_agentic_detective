@@ -23,6 +23,16 @@ Environment: Linux, `.venv/bin/python`. No network in this step.
    ratios. No raw per-ticker price history.
 5. Seeds fixed (`numpy.random.default_rng(20261113)`); a second `analyse` run is byte-identical.
 
+## Carried over from step 8 (docs/reviews/step8_build.md) and amendment A1
+- Implement A1's resolved-market rule where the panels are read: after a token's close time its
+  price is its last traded price. If the step 8 panel does not already do this, add it in
+  `election/panel.py` with a test (input: last trade 10:54 UTC at 0.9995, session close 21:00 UTC
+  → p = 0.9995, flagged `resolved=true`; a session BEFORE the close keeps the 6 h rule), rebuild
+  the panel, and say so in the report.
+- Data end at the 2026-11-12 session (E5 runs 4–12 Nov). Hourly `ret` is log(close/open) per bar.
+- Hourly tables lack 2026-01-30 and 2026-02-02 (Yahoo hole): those sessions drop out of H4.
+- Report the two-sided H2 p beside the one-sided one.
+
 ## What to compute (ids match the pre-registration)
 - **H1** composite, placebo basket, and the difference; controls RSP + TLT. Report b per +10
   points, HAC se, 90% CI, HAC p, circular-shift permutation p (1,000 shifts, min shift 20), n,

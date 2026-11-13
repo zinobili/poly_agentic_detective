@@ -128,4 +128,22 @@ No causal claim about policy. No trading recommendation. Paper only. One midterm
 observation of the event itself; only the pre-election daily and hourly samples have n > 1.
 
 ## Amendments
-(none yet)
+
+### A1, 2026-11-13 (after the step 8 data build, BEFORE any return-vs-odds statistic was run)
+Raised by the data build and the pre-push review; no stock return has been compared with odds.
+- **Resolved markets.** The four midterm tokens stopped trading when they resolved (p_sen closed
+  2026-11-04 10:54 UTC), so the "older than 6 h is missing" rule would blank the 4 Nov close. Rule:
+  from a token's CLOB close time onward, its price is its last traded price (≈ the resolved
+  value). This uses only information known at that time. It applies to daily, hourly and 5-minute
+  tables (in H3, bars after the close have ΔP = 0). The freshness rule is unchanged before the
+  close.
+- **Correction of a scouting number.** P(D Senate) as-of the 3 Nov 16:00 ET close is 0.745, not the
+  0.755 quoted in the disclosure (0.755 was a later print that evening).
+- **H2 direction.** The one-sided direction of H2 (ρ > 0) rests on the sign of the event ΔP_sen,
+  which was known before the freeze. This is disclosed here; the two-sided p is reported beside it.
+- **Thin start.** p_sen did not trade from 2025-07-11 to 2025-07-18; the first four sessions have
+  no odds and drop out under the existing missing-data rule. No change of rule.
+- **Staleness in the 5-minute table** is 10 minutes (set in the step 8 hand-off; the original text
+  gave no number).
+- **Hourly returns** are log(close/open) of each regular-session bar (unadjusted prices); daily
+  returns are adjusted close-to-close. Data end at the 2026-11-12 session.

@@ -1,0 +1,189 @@
+# Milestone 2 (election study) data config: single source of truth for step 8.
+# Frozen design: docs/election/preregistration.md. Dates are quoted strings (UTC `Z`, or ET dates
+# where stated). Token ids come from Gamma GET /events/<id>, markets matched by question text.
+# `closed` is Gamma's closedTime, used only to bound the pull range (never to select data at t).
+
+study:
+  data_start: "2025-06-01"     # ET date, first yfinance day (1d and 1h)
+  data_end: "2026-11-13"       # ET date, EXCLUSIVE; last session in the data is 2026-11-12
+  vol_start: "2018-01-01"      # ET date, vol-index daily history start
+  pm_start: "2025-07-11T00:00:00Z"
+  pre_sample_start: "2025-07-14"
+  pre_sample_end: "2026-11-02"
+
+asof:                          # maximum age of an odds reading before it is missing
+  daily_max_age_s: 21600       # 6 h at a daily close
+  hourly_max_age_s: 1800       # 30 min at an hourly bar end
+  night_max_age_s: 600         # 10 min at a 5-minute bar end
+
+windows:
+  fid1_start: "2026-11-03T18:00:00Z"
+  fid1_end: "2026-11-04T18:00:00Z"
+  futures_5m_start: "2026-10-27"   # ET date
+  futures_5m_end: "2026-11-07"     # ET date, exclusive
+  h3_start_et: "2026-11-03T18:00:00"   # wall-clock America/New_York
+  h3_end_et: "2026-11-04T09:30:00"
+  h3_margin_min: 30
+
+signals:
+  p_sen:
+    event_id: 32224
+    market_id: "562793"
+    question: "Will the Democratic Party control the Senate after the 2026 Midterm elections?"
+    yes_token_id: "113287701564209339913693347405685749986285999146352375265161592243948562084773"
+    created: "2025-07-11T19:22:46.116532Z"
+    closed: "2026-11-04T10:53:59.942479Z"
+  p_house:
+    event_id: 32225
+    market_id: "562802"
+    question: "Will the Democratic Party control the House after the 2026 Midterm elections?"
+    yes_token_id: "83247781037352156539108067944461291821683755894607244160607042790356561625563"
+    created: "2025-07-11T19:29:37.755178Z"
+    closed: "2026-11-04T13:06:30.40202Z"
+  p_sweep:
+    event_id: 32228
+    market_id: "562828"
+    question: "2026 Balance of Power: D Senate, D House"
+    yes_token_id: "34722410608062854697106861099776685947172185964394483545370684749662285977831"
+    created: "2025-07-11T20:47:53.368542Z"
+    closed: "2026-11-04T17:47:20.261817Z"
+  p_rr:
+    event_id: 32228
+    market_id: "562831"
+    question: "2026 Balance of Power: R Senate, R House"
+    yes_token_id: "103704141773947678931823410030956181918562062788486034785782641603149828893320"
+    created: "2025-07-11T20:47:55.353588Z"
+    closed: "2026-11-04T17:14:49.880606Z"
+
+moratorium:                    # 'by December 31, 2027' market of each state; open markets
+  # (closed: null); the pull ends at study.data_end
+  indiana:
+    event_id: 1103960
+    market_id: "5126779"
+    question: "Will Indiana enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "17772357652541837838268340566054305212337253685162402420922433137448964217470"
+    created: "2026-09-29T15:56:17.277589Z"
+    closed: null
+  ohio:
+    event_id: 1103681
+    market_id: "5123850"
+    question: "Will Ohio enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "83578989958484702465841140742989788249027311873823224397200251475245109172644"
+    created: "2026-09-29T14:15:20.785951Z"
+    closed: null
+  texas:
+    event_id: 1103684
+    market_id: "5123857"
+    question: "Will Texas enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "22007935324383614741304787778360750052563990755989237617249489952581834753660"
+    created: "2026-09-29T14:16:08.06503Z"
+    closed: null
+  oklahoma:
+    event_id: 1103961
+    market_id: "5126782"
+    question: "Will Oklahoma enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "28079672016534345183084367184547529167113474189223715679169407725780387964597"
+    created: "2026-09-29T15:56:48.295868Z"
+    closed: null
+  missouri:
+    event_id: 1103970
+    market_id: "5126793"
+    question: "Will Missouri enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "7452686474791804844828113859675630880260841186582752326279968660605209282618"
+    created: "2026-09-29T15:57:48.383713Z"
+    closed: null
+  louisiana:
+    event_id: 1103971
+    market_id: "5126796"
+    question: "Will Louisiana enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "11267424882051516410341388336292416163400398951844995526794004320655910795843"
+    created: "2026-09-29T15:58:03.852646Z"
+    closed: null
+  north_carolina:
+    event_id: 1139944
+    market_id: "5347190"
+    question: "Will North Carolina enact a data center moratorium by December 31, 2027?"
+    yes_token_id: "39398445930656174886530576419683323305040155953340125555497710745933983054269"
+    created: "2026-10-05T23:15:53.242558Z"
+    closed: null
+
+universe:                      # basket ai: 4 sub-baskets; basket placebo: no AI-capex thesis
+  - {ticker: NVDA, basket: ai, sub: semis, why: "Dominant AI accelerator supplier; direct read on AI capex."}
+  - {ticker: AMD, basket: ai, sub: semis, why: "Second GPU/accelerator source, data-centre CPU share gains."}
+  - {ticker: AVGO, basket: ai, sub: semis, why: "Custom AI ASICs and networking silicon for hyperscalers."}
+  - {ticker: TSM, basket: ai, sub: semis, why: "Foundry for nearly all leading AI chips; also a Taiwan/trade-policy exposure."}
+  - {ticker: MU, basket: ai, sub: semis, why: "HBM memory supplier; AI demand drives the memory cycle."}
+  - {ticker: MRVL, basket: ai, sub: semis, why: "Custom silicon and optical interconnect for AI data centres."}
+  - {ticker: ASML, basket: ai, sub: semis, why: "EUV lithography monopoly; upstream of all leading-edge AI chips."}
+  - {ticker: AMAT, basket: ai, sub: semis, why: "Wafer-fab equipment; AI-driven fab capex beneficiary."}
+  - {ticker: MSFT, basket: ai, sub: hyperscalers, why: "Azure and OpenAI partnership; largest AI capex spender."}
+  - {ticker: GOOGL, basket: ai, sub: hyperscalers, why: "Gemini, TPUs and Google Cloud; heavy AI capex."}
+  - {ticker: AMZN, basket: ai, sub: hyperscalers, why: "AWS, Trainium and Anthropic stake; heavy AI capex."}
+  - {ticker: META, basket: ai, sub: hyperscalers, why: "Largest open-model builder; capex guidance driven by AI."}
+  - {ticker: ORCL, basket: ai, sub: hyperscalers, why: "OCI AI backlog (OpenAI, Stargate); debt-funded AI build-out."}
+  - {ticker: CRWV, basket: ai, sub: hyperscalers, why: "Pure-play AI cloud (GPU rental); listed 2025-03-28, high-beta AI proxy."}
+  - {ticker: VST, basket: ai, sub: power_infra, why: "Independent power producer selling to data centres."}
+  - {ticker: CEG, basket: ai, sub: power_infra, why: "Nuclear fleet with data-centre power contracts."}
+  - {ticker: TLN, basket: ai, sub: power_infra, why: "Nuclear-backed IPP with data-centre supply deals."}
+  - {ticker: GEV, basket: ai, sub: power_infra, why: "Gas turbines and grid equipment for AI load growth."}
+  - {ticker: VRT, basket: ai, sub: power_infra, why: "Data-centre power and cooling equipment."}
+  - {ticker: ETN, basket: ai, sub: power_infra, why: "Electrical equipment for data-centre and grid build-out."}
+  - {ticker: EQIX, basket: ai, sub: power_infra, why: "Colocation data-centre REIT with AI interconnect demand."}
+  - {ticker: DLR, basket: ai, sub: power_infra, why: "Wholesale data-centre REIT leasing to hyperscalers."}
+  - {ticker: PLTR, basket: ai, sub: software, why: "AI platform vendor; retail-favoured AI-narrative stock."}
+  - {ticker: NOW, basket: ai, sub: software, why: "Enterprise workflow software monetising AI agents."}
+  - {ticker: SNOW, basket: ai, sub: software, why: "Data cloud positioned as the AI data layer."}
+  - {ticker: DDOG, basket: ai, sub: software, why: "Observability for AI/cloud workloads."}
+  - {ticker: CRM, basket: ai, sub: software, why: "Enterprise CRM pushing Agentforce AI."}
+  - {ticker: ADBE, basket: ai, sub: software, why: "Creative/document software with generative-AI exposure (and disruption risk)."}
+  - {ticker: MDB, basket: ai, sub: software, why: "Database vendor tied to AI application data."}
+  - {ticker: JNJ, basket: placebo, sub: healthcare, why: "Pharma/devices; no AI-capex thesis."}
+  - {ticker: PG, basket: placebo, sub: staples, why: "Household staples."}
+  - {ticker: KO, basket: placebo, sub: staples, why: "Beverages."}
+  - {ticker: PEP, basket: placebo, sub: staples, why: "Beverages and snacks."}
+  - {ticker: WMT, basket: placebo, sub: staples, why: "Mass retail."}
+  - {ticker: COST, basket: placebo, sub: staples, why: "Warehouse retail."}
+  - {ticker: MCD, basket: placebo, sub: consumer, why: "Restaurants."}
+  - {ticker: HD, basket: placebo, sub: consumer, why: "Home-improvement retail; housing-cycle driven."}
+  - {ticker: UNH, basket: placebo, sub: healthcare, why: "Managed care; policy-driven, not AI."}
+  - {ticker: LLY, basket: placebo, sub: healthcare, why: "GLP-1 pharma; drug-cycle driven."}
+  - {ticker: MRK, basket: placebo, sub: healthcare, why: "Large pharma."}
+  - {ticker: ABBV, basket: placebo, sub: healthcare, why: "Large pharma."}
+  - {ticker: JPM, basket: placebo, sub: financials, why: "Money-centre bank; rates and credit."}
+  - {ticker: BAC, basket: placebo, sub: financials, why: "Large bank."}
+  - {ticker: GS, basket: placebo, sub: financials, why: "Investment bank; capital markets."}
+  - {ticker: BRK-B, basket: placebo, sub: financials, why: "Diversified holding company (Yahoo symbol BRK-B)."}
+  - {ticker: V, basket: placebo, sub: financials, why: "Payments network; consumer spending."}
+  - {ticker: XOM, basket: placebo, sub: energy, why: "Oil major; crude price."}
+  - {ticker: CVX, basket: placebo, sub: energy, why: "Oil major; crude price."}
+  - {ticker: CAT, basket: placebo, sub: industrials, why: "Heavy machinery; global construction cycle."}
+  - {ticker: HON, basket: placebo, sub: industrials, why: "Diversified industrial."}
+  - {ticker: UPS, basket: placebo, sub: industrials, why: "Parcel logistics; consumer/trade volumes."}
+  - {ticker: LMT, basket: placebo, sub: defense, why: "Defence prime; budget-driven."}
+  - {ticker: RTX, basket: placebo, sub: defense, why: "Aerospace and defence."}
+  - {ticker: DIS, basket: placebo, sub: communication, why: "Media and parks."}
+  - {ticker: T, basket: placebo, sub: communication, why: "Telecom; rates-sensitive yield stock."}
+  - {ticker: VZ, basket: placebo, sub: communication, why: "Telecom; rates-sensitive yield stock."}
+  - {ticker: NEE, basket: placebo, sub: utilities, why: "Regulated utility and renewables; rates-sensitive."}
+  - {ticker: LIN, basket: placebo, sub: materials, why: "Industrial gases."}
+
+controls:
+  RSP: "Equal-weight S&P 500: market control that does not absorb the AI names (prereg)."
+  TLT: "Long Treasury ETF: rates control."
+  SPY: "Cap-weighted S&P 500: robustness control in place of RSP."
+  QQQ: "Nasdaq-100 ETF: tech-beta reference."
+  SMH: "Semiconductor ETF: sector reference for the semis sub-basket."
+  XLU: "Utilities sector ETF: benchmark for the power/data-centre sub-basket (E3)."
+
+futures:
+  NQ=F: "E-mini Nasdaq-100 future, ~23 h/day: election-night tech read."
+  ES=F: "E-mini S&P 500 future: broad-market read."
+  RTY=F: "E-mini Russell 2000 future: small-cap read."
+
+vol_indices:
+  ^VIX: "S&P 500 30-day implied vol."
+  ^VIX9D: "9-day implied vol (front of the term structure)."
+  ^VIX3M: "3-month implied vol (back of the term structure)."
+  ^VXN: "Nasdaq-100 implied vol."
+  ^VVIX: "Vol of VIX."
+  ^NDX: "Nasdaq-100 index level (realised move vs VXN-implied move, E2)."
