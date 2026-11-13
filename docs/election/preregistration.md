@@ -147,3 +147,13 @@ Raised by the data build and the pre-push review; no stock return has been compa
   gave no number).
 - **Hourly returns** are log(close/open) of each regular-session bar (unadjusted prices); daily
   returns are adjusted close-to-close. Data end at the 2026-11-12 session.
+
+### A2, 2026-11-13 (disclosures recorded AFTER the step 9 run; no rule or verdict changed)
+- **H2b tie rule.** Daily ΔP_sen moves in 0.005 steps, so many days tie at the 90th percentile.
+  The builder fixed "|ΔP| ≥ the running 90th percentile" before the real run; it selects 74 of
+  205 eligible days (36%), not about 10%. Left as built. H2b cannot change either primary verdict.
+- **H1 permutation.** Only 286 distinct circular shifts satisfy the 20-session minimum, so the
+  1,000 draws are with replacement; the p-value has the resolution of 286 shifts.
+- **H2 sign.** The observed rank correlation is negative, against the pre-registered direction.
+  Under the frozen one-sided test this is "did not predict". The two-sided p is reported beside
+  it and is exploratory only.

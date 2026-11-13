@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from poly_actor.align.grid import bar_table, epoch_seconds, load_sessions, restamp_bars
-from poly_actor.align.prices import PriceBook
+from poly_actor.align.prices import PriceBook, Quotes
 from poly_actor.align.stocks import bar_log_returns
 from poly_actor.election import ingest as ing
 from poly_actor.election.config import SIGNALS, ElectionConfig
@@ -42,9 +42,13 @@ def sessions_in(cfg: ElectionConfig) -> pd.DataFrame:
 
 
 def build_book(
-    points: dict[str, pd.DataFrame], max_age_s: int, fid: int | None = None
-) -> PriceBook:
-    """PriceBook over {key: points(t, p, fidelity)}; `fid` keeps only that fidelity."""
+    points: dict[str, pd.DataFrame],
+    max_age_s: int,
+    fid: int | None = None,
+    closes: dict[str, int | None] | None = None,
+) -> PriceBook | ResolvingBook:
+    """PriceBook over {key: points(t, p, fidelity)}; `fid` keeps only that fidelity. With
+    `closes` ({key: close epoch s or None}) the A1 resolved-market rule is applied."""
     frames = []
     for key, df in points.items():
         d = df if fid is None else df[df["fidelity"] == fid]
@@ -52,7 +56,48 @@ def build_book(
     obs = (
         pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["key", "t", "p"])
     )
-    return PriceBook(obs, max_age_s)
+    if closes is None:
+        return PriceBook(obs, max_age_s)
+    return ResolvingBook(PriceBook(obs, max_age_s), PriceBook(obs, NO_CAP_S), closes)
+
+
+NO_CAP_S = 10**12  # "no age cap" for the last traded price of a resolved market (A1)
+
+
+class ResolvingBook:
+    """As-of with amendment A1: at instants >= the token's close time the price is the last
+    traded price at or before the instant (no age cap); before the close the capped book rules.
+    `resolved(key, instants)` flags the instants at or after the close."""
+
+    def __init__(self, capped: PriceBook, uncapped: PriceBook, closes: dict[str, int | None]):
+        self.capped, self.uncapped, self.closes = capped, uncapped, closes
+        self.max_age_s = capped.max_age_s
+
+    def has(self, key: str) -> bool:
+        return self.capped.has(key)
+
+    def resolved(self, key: str, instants: np.ndarray) -> np.ndarray:
+        c = self.closes.get(key)
+        inst = np.asarray(instants, dtype="int64")
+        return np.zeros(len(inst), dtype=bool) if c is None else inst >= c
+
+    def asof(self, key: str, instants: np.ndarray) -> Quotes:
+        q = self.capped.asof(key, instants)
+        res = self.resolved(key, instants)
+        if not res.any():
+            return q
+        last = self.uncapped.asof(key, instants)
+        return Quotes(
+            np.where(res, last.p, q.p),
+            np.where(res, last.age_s, q.age_s),
+            np.where(res, last.clipped, q.clipped),
+        )
+
+
+def _resolved(book, key: str, instants: np.ndarray) -> np.ndarray:
+    if isinstance(book, ResolvingBook):
+        return book.resolved(key, instants)
+    return np.zeros(len(instants), dtype=bool)
 
 
 def asof_long(book: PriceBook, keys: list[str], instants: np.ndarray) -> pd.DataFrame:
@@ -61,7 +106,15 @@ def asof_long(book: PriceBook, keys: list[str], instants: np.ndarray) -> pd.Data
     for k in keys:
         q = book.asof(k, instants)
         parts.append(
-            pd.DataFrame({"i": np.arange(len(instants)), "key": k, "p": q.p, "age_s": q.age_s})
+            pd.DataFrame(
+                {
+                    "i": np.arange(len(instants)),
+                    "key": k,
+                    "p": q.p,
+                    "age_s": q.age_s,
+                    "resolved": _resolved(book, k, instants),
+                }
+            )
         )
     return pd.concat(parts, ignore_index=True)
 
@@ -71,23 +124,29 @@ def asof_long(book: PriceBook, keys: list[str], instants: np.ndarray) -> pd.Data
 
 def build_daily(bars: dict[str, pd.DataFrame], sessions: pd.DataFrame) -> pd.DataFrame:
     """One row per (session, ticker): close_ts (real close, early closes included), adjusted
-    close, close-to-close log return. A session with no bar has NaN close and return, and so has
-    the next session's return (the previous close is unknown): no forward-fill."""
+    open and close (same auto_adjust frame), close-to-close log return. A session with no bar
+    has NaN close and return, and so has the next session's return (the previous close is
+    unknown): no forward-fill."""
     base = sessions[["session", "close_s"]].copy()
     base["close_ts"] = utc(base["close_s"]).to_numpy()
     out = []
     for tk in sorted(bars):
         b = bars[tk]
-        px = pd.Series(dtype="float64")
+        px = op = pd.Series(dtype="float64")
         if len(b):
             day = pd.DatetimeIndex(b["ts"]).tz_convert(ET).date
             px = pd.Series(b["close"].to_numpy(), index=day)
             px = px[~px.index.duplicated()]
+            if "open" in b:
+                op = pd.Series(b["open"].to_numpy(), index=day)
+                op = op[~op.index.duplicated()]
         df = base[["session", "close_ts"]].copy()
         df["ticker"] = tk
         df["adj_close"] = df["session"].map(px).astype("float64")
+        df["adj_open"] = df["session"].map(op).astype("float64")
         valid = df["adj_close"] > 0
         df.loc[~valid, "adj_close"] = np.nan
+        df.loc[~(df["adj_open"] > 0), "adj_open"] = np.nan
         with np.errstate(invalid="ignore", divide="ignore"):
             df["ret"] = np.log(df["adj_close"] / df["adj_close"].shift(1))
         df["missing"] = df["adj_close"].isna()
@@ -107,6 +166,7 @@ def build_odds_daily(book: PriceBook, keys: list[str], sessions: pd.DataFrame) -
             "signal": long["key"],
             "p": long["p"],
             "age_s": long["age_s"],
+            "resolved": long["resolved"],
         }
     )
     out["dp"] = out.groupby("signal", sort=False)["p"].diff()
@@ -156,6 +216,7 @@ def build_odds_hourly(book: PriceBook, keys: list[str], sessions: pd.DataFrame) 
             "signal": long["key"],
             "p": long["p"],
             "age_s": long["age_s"],
+            "resolved": long["resolved"],
         }
     )
     out = out.sort_values(["signal", "bar_end_ts"])
@@ -168,7 +229,8 @@ def build_night(
 ) -> pd.DataFrame:
     """Futures 5-minute bars stamped at bar END (start + 5 min; futures have no XNYS session)
     around the H3 window, with odds as-of each bar end (fid-1 points only, cap 10 min) and the
-    5-minute dp against the previous consecutive bar. `in_window` marks the H3 window itself."""
+    5-minute dp against the previous consecutive bar (after a market's close, A1: last traded
+    price, so dp = 0). `in_window` marks the H3 window itself."""
     lo, hi = cfg.h3_window
     m = cfg.h3_margin_s
     parts = []
@@ -186,7 +248,7 @@ def build_night(
         d["open"], d["close"] = o, c
         parts.append(d.sort_values("end_s"))
     head = ["ticker", "bar_start_ts", "bar_end_ts", "in_window", "open", "close", "ret"]
-    cols = head + [c for k in keys for c in (k, f"age_{k}", f"d{k}")]
+    cols = head + [c for k in keys for c in (k, f"age_{k}", f"d{k}", f"res_{k}")]
     if not parts:
         return pd.DataFrame(columns=cols)
     out = pd.concat(parts, ignore_index=True)
@@ -194,6 +256,7 @@ def build_night(
     for k in keys:
         q = book.asof(k, inst)
         out[k], out[f"age_{k}"] = q.p, q.age_s
+        out[f"res_{k}"] = _resolved(book, k, inst)
         consecutive = out.groupby("ticker")["end_s"].diff() == BAR_5M_S
         out[f"d{k}"] = out.groupby("ticker")[k].diff().where(consecutive)
     out["in_window"] = (out["end_s"] > lo) & (out["end_s"] <= hi)
@@ -258,16 +321,21 @@ def build_all(cfg: ElectionConfig, raw_dir: Path, clean_dir: Path) -> dict:
     sig_pts = {k: pts[k] for k in SIGNALS}
     mor_pts = {k: pts[k] for k in cfg.moratorium}
     sig = list(SIGNALS)
+    closes = {k: cfg.signals[k].closed_s for k in sig}  # A1 resolved-market rule
     eq = cfg.equity_tickers
     hourly, unmatched = build_hourly(load_bars(raw_dir, eq, "1h"), sessions)
     tables = {
         "daily": build_daily(load_bars(raw_dir, eq, "1d"), sessions),
-        "odds_daily": build_odds_daily(build_book(sig_pts, cfg.max_age["daily"]), sig, sessions),
+        "odds_daily": build_odds_daily(
+            build_book(sig_pts, cfg.max_age["daily"], closes=closes), sig, sessions
+        ),
         "hourly": hourly,
-        "odds_hourly": build_odds_hourly(build_book(sig_pts, cfg.max_age["hourly"]), sig, sessions),
+        "odds_hourly": build_odds_hourly(
+            build_book(sig_pts, cfg.max_age["hourly"], closes=closes), sig, sessions
+        ),
         "night_5m": build_night(
             load_bars(raw_dir, cfg.futures, "5m"),
-            build_book(sig_pts, cfg.max_age["night"], fid=1),
+            build_book(sig_pts, cfg.max_age["night"], fid=1, closes=closes),
             sig,
             cfg,
         ),

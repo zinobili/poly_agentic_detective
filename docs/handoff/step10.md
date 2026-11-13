@@ -71,3 +71,6 @@ Environment: Linux, `.venv/bin/python`, `.venv/bin/streamlit`.
 5. `.claude/launch.json`: add a second configuration `election` (Linux and Windows paths as in
    the existing entry's style).
 6. `bash scripts/check.sh` PASS. Report → `docs/reviews/step10_build.md`; reply ≤ 250 words.
+
+## Carried-over minors (crusader 2026-11-13b, docs/reviews/push_2026-11-13b_crusader.md)
+Fix the 10 minors listed there in `src/poly_actor/election/` (untyped args in cli/config/coverage, obscure `idxmax` in panel.py, non-atomic writes of clean parquet and coverage.json, lazy `coverage` import in panel.py) where they are cheap; defer the rest with a reason.

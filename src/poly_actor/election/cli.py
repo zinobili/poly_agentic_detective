@@ -1,4 +1,5 @@
-"""CLI: python -m poly_actor.election ingest [--workers N] [--dry-run] [--only pm|yf] | panel"""
+"""CLI: python -m poly_actor.election ingest [--workers N] [--dry-run] [--only pm|yf] | panel |
+analyse | publish"""
 
 from __future__ import annotations
 
@@ -59,6 +60,25 @@ def cmd_panel(args) -> int:
     return 0
 
 
+def cmd_analyse(args) -> int:
+    from poly_actor.election.analysis import analyse
+
+    out = CLEAN_ELECTION / "results"
+    res = analyse(load_config(), CLEAN_ELECTION, out)
+    _log(res["headline"]["sentence"])
+    _log(f"wrote {out / 'results.json'} and {len(res['series'])} series")
+    return 0
+
+
+def cmd_publish(args) -> int:
+    from poly_actor.config import ROOT
+    from poly_actor.election.analysis import publish
+
+    files = publish(CLEAN_ELECTION / "results", ROOT / "reports" / "election")
+    _log(f"published {len(files)} files to reports/election/")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="poly_actor.election")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -70,5 +90,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_ingest)
     q = sub.add_parser("panel", help="build clean parquet panels + coverage.json")
     q.set_defaults(fn=cmd_panel)
+    a = sub.add_parser("analyse", help="run the pre-registered analysis -> results/")
+    a.set_defaults(fn=cmd_analyse)
+    b = sub.add_parser("publish", help="copy results/ to reports/election/")
+    b.set_defaults(fn=cmd_publish)
     args = ap.parse_args(argv)
     return args.fn(args)
