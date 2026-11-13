@@ -38,7 +38,7 @@ def planted(cfg, tmp_path_factory):
         n_lag=0,
         event_xs=0.245,
     )
-    res = an.analyse(cfg, d / "clean", d / "out", today="2026-11-13")
+    res = an.analyse(cfg, d / "clean", d / "out")
     return d, res
 
 
@@ -46,7 +46,7 @@ def planted(cfg, tmp_path_factory):
 def noise(cfg, tmp_path_factory):
     d = tmp_path_factory.mktemp("noise")
     make_panels(cfg, d / "clean", seed=2)
-    return d, an.analyse(cfg, d / "clean", d / "out", today="2026-11-13")
+    return d, an.analyse(cfg, d / "clean", d / "out")
 
 
 def test_planted_ai_beta_gives_ai_verdict(planted):
@@ -111,7 +111,7 @@ def test_results_contract_and_series_exist(planted):
 
 def test_analyse_twice_is_byte_identical(cfg, planted):
     d, _ = planted
-    an.analyse(cfg, d / "clean", d / "out2", today="2026-11-13")
+    an.analyse(cfg, d / "clean", d / "out2")
     a = (d / "out" / "results.json").read_bytes()
     assert a == (d / "out2" / "results.json").read_bytes()
     for f in (d / "out" / "series").iterdir():

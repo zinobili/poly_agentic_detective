@@ -14,7 +14,6 @@ returns and require every member (no member is missing in the real data). Seeds 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -290,7 +289,7 @@ def run_h4(p: dict, cfg: ElectionConfig) -> dict:
     return out
 
 
-def analyse(cfg: ElectionConfig, clean_dir: Path, out_dir: Path, today: str | None = None) -> dict:
+def analyse(cfg: ElectionConfig, clean_dir: Path, out_dir: Path) -> dict:
     p = load_panels(clean_dir)
     D = daily_frame(p["daily"], p["odds_daily"])
     S = window(D, *cfg.pre_sample)
@@ -320,7 +319,6 @@ def analyse(cfg: ElectionConfig, clean_dir: Path, out_dir: Path, today: str | No
             "signals": list(SIGNALS),
             "primary_signal": "p_sen",
             "seed": st.SEED,
-            "generated_at": today or datetime.now(UTC).date().isoformat(),
             "units": "b10_pct = % log return per +10 probability points",
         },
         "headline": hd,

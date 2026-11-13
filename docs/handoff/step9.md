@@ -76,8 +76,7 @@ Environment: Linux, `.venv/bin/python`. No network in this step.
 | `analyse` run twice | identical `results.json` bytes |
 
 ## `results.json` contract (the dashboard and findings read only this)
-Top level: `meta` (commit-independent: sample dates, n sessions, signal ids, seed, generated_at
-date only), `headline` {`h1_verdict`, `h2_verdict`, `sentence`}, `h1`, `h2`, `h2b`, `h3`, `h4`,
+Top level: `meta` (commit-independent: sample dates, n sessions, signal ids, seed; no run date, so re-runs stay byte-identical), `headline` {`h1_verdict`, `h2_verdict`, `sentence`}, `h1`, `h2`, `h2b`, `h3`, `h4`,
 `h5`, `exploratory` {`e1`…`e5`}, `robustness` (list of rows), `coverage` (from step 8),
 `checklist` (per hypothesis: rows of {name, status ✓/✗/n.a., plain, technical}).
 Chart series go in `series/*.parquet` (or `.csv`), each referenced by name from the JSON.
