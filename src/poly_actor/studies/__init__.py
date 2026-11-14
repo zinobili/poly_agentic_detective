@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from poly_actor.config import ROOT
-
 
 @dataclass(frozen=True)
 class Study:
@@ -85,4 +83,4 @@ def describe() -> str:
     return "\n\n".join(blocks)
 
 
-__all__ = ["ROOT", "STUDIES", "Study", "describe", "get"]
+__all__ = ["STUDIES", "Study", "describe", "get"]

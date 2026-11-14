@@ -26,7 +26,7 @@ Map of the docs: `docs/README.md`. How to add a study: `docs/studies/README.md`.
 ## Workflow (every step)
 1. **Plan.** Write or refresh `docs/studies/<study>/handoff/step<N>.md` with the decisions, requirements, the minors carried over, and the checklist. Write rules as 2–3 input → expected-output examples, not prose.
 2. **Build.** Brief the builder agent short: "Read `docs/lessons.md` and `step<N>.md`, then do X." The builder self-checks against the checklist and the lessons before reporting.
-3. **`bash scripts/check.sh`** runs the tests, ruff, the pairs.yaml rebuild and the ingest dry run.
+3. **`bash scripts/check.sh`** runs the tests and ruff for the whole repo, plus two lead-lag gates (the pairs.yaml rebuild and the ingest dry run) that are skipped when their local data is absent.
 4. **Validate** with `/validate-step <study> <N>`, using a fresh validator. Severity gate: only blockers and majors trigger a re-check, and minors move to the next step's hand-off. **At most 2 rounds**, then ask the user.
 5. **Commit** locally, then update `docs/progress.md`.
    **Before any push to GitHub:** run the `clean-code-crusader` agent on the unpushed diff (software-engineering standards). Fix its blockers and majors, run `scripts/check.sh`, then push.

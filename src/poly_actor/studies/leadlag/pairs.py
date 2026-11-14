@@ -2,7 +2,7 @@
 
 Used by `scripts/build_pairs.py` (step 2) and reused in step 3.
 
-Timezone helpers live in `poly_actor.core.timeutil` and are re-exported here.
+Timezone helpers live in `poly_actor.core.timeutil`.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from poly_actor.core.timeutil import ET, et_to_utc, et_to_utc_dt  # noqa: F401  (re-exported)
+from poly_actor.core.timeutil import ET
 
 Ladder = Literal["up", "dip"]  # "up": reach K (touch from below); "dip": dip to K
 

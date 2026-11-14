@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from poly_actor.core import io
-from poly_actor.core.io import jsonable, write_text_atomic  # noqa: F401  (re-exported)
 from poly_actor.studies.leadlag.analysis import events as ev
 from poly_actor.studies.leadlag.analysis import placebo, verdict
 from poly_actor.studies.leadlag.analysis.runners import BtcCore, CpiCore, FedCore

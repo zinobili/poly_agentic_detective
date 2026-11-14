@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from poly_actor.core.timegrid.consts import (  # noqa: F401  (re-exported for align)
+# The generic grid constants are part of this module's namespace on purpose: every align module
+# reads its constants from here.
+from poly_actor.core.timegrid.consts import (  # noqa: F401
     CLIP_HI,
     CLIP_LO,
     HOUR_S,

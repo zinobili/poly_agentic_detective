@@ -35,3 +35,9 @@
   the rolling estimate; the sub-basket inequality (power/data-centre on the other side of zero);
   the -5.4% vs +0.9% election-window gap between AI and non-AI names; single-name option-implied
   moves (needs paid options history).
+
+## Repo layout (restructure of 2026-11-14): open minors
+- `core/ui/style.py` still carries the lead-lag sticky pair-bar CSS (`.st-key-pair_nav`, `NAV_COLORS`); move it into `studies/leadlag/dashboard` when a third app needs the shared style.
+- `studies/leadlag/align/consts.py` re-exports the generic grid constants on purpose; switch its users to `core.timegrid.consts` if that module grows.
+- No config/tests template under `docs/studies/_template/` yet (only the pre-registration and hand-off templates).
+- Lead-lag data still sits at the top of `data/raw/` and `data/clean/`; moving it under `data/*/leadlag/` needs a local data move on the machine that holds it.

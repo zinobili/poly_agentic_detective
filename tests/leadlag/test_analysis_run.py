@@ -8,10 +8,11 @@ import re
 import shutil
 from pathlib import Path
 
+import analysis_synth as synth
 import numpy as np
 import pytest
 
-import analysis_synth as synth
+from poly_actor.core import io
 from poly_actor.core.stats import models
 from poly_actor.studies.leadlag.analysis import cpi, results, run, runners, verdict
 from poly_actor.studies.leadlag.dashboard.contract import (
@@ -121,7 +122,7 @@ def test_every_doc_round_trips_through_the_typed_contract(written):
     """Producer and consumer share `ResultsDoc`: a renamed or dropped key fails here."""
     _, docs, _ = written
     for pid, doc in docs.items():
-        raw = results.jsonable(doc)
+        raw = io.jsonable(doc)
         assert set(raw) <= set(ResultsDoc.__annotations__), pid
         assert ResultsDoc.__required_keys__ <= set(raw), pid
         assert all(set(r) == set(CheckRowDoc.__annotations__) for r in raw["checklist"])
@@ -145,11 +146,11 @@ def test_every_doc_round_trips_through_the_typed_contract(written):
 
 
 def test_jsonable_names_an_unknown_type():
-    assert results.jsonable({"a": (np.float64("nan"), np.int64(2), True, None)}) == {
+    assert io.jsonable({"a": (np.float64("nan"), np.int64(2), True, None)}) == {
         "a": [None, 2, True, None]
     }
     with pytest.raises(TypeError, match="object"):
-        results.jsonable({"a": object()})
+        io.jsonable({"a": object()})
 
 
 def test_write_json_leaves_no_temp_file(tmp_path):

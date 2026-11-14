@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from poly_actor.config import ROOT
+from poly_actor.core.io import write_text_atomic
 from poly_actor.studies.leadlag.analysis import verdict
-from poly_actor.studies.leadlag.analysis.results import write_text_atomic
 from poly_actor.studies.leadlag.dashboard import text
 from poly_actor.studies.leadlag.dashboard.contract import PairResults, parse_results, results_path
 from poly_actor.studies.leadlag.dashboard.load import PairSpec

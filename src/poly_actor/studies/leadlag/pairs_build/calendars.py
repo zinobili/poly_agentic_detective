@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from poly_actor.studies.leadlag.pairs import et_to_utc
+from poly_actor.core.timeutil import et_to_utc
 from poly_actor.studies.leadlag.pairs_build.gamma import GammaClient
 from poly_actor.studies.leadlag.pairs_build.slugs import CPI_MONTHS, FED_MEETINGS
 from poly_actor.studies.leadlag.pairs_build.util import iso, plus_hours

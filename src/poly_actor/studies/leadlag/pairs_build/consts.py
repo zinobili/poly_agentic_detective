@@ -39,5 +39,5 @@ GLOBAL_CONVENTIONS = {
     "roll_offset_hours": 1,
     "splice_rule": SPLICE_RULE,
     "roll_hour_flag": "bar starting at roll_utc is flagged roll_hour=true; step 6 excludes it",
-    "multiple_testing": "3 primary tests (Fed: TLT hourly lead-lag; BTC: IBIT incremental to spot; CPI: TLT opening gap on release days). us_recession is secondary/descriptive and outside the correction family (docs/studies/leadlag/preregistration.md)",
+    "multiple_testing": "3 primary tests (Fed: TLT hourly lead-lag; BTC: IBIT incremental to spot; CPI: TLT opening gap on release days). us_recession is secondary/descriptive and outside the correction family (docs/preregistration.md)",
 }

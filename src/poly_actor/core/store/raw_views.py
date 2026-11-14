@@ -1,5 +1,8 @@
 """DuckDB views over the immutable raw Parquet files (read-only; nothing is copied).
 
+Layout: `<raw_dir>/polymarket/<token>/fid=<n>/*.parquet` and `<raw_dir>/stocks/...`, as written by
+`core.ingest`. The lead-lag study passes `data/raw`; a newer study passes `data/raw/<study>`.
+
 - raw_polymarket_prices(token_id, fidelity, t, ts, p): de-duplicated on (token, fidelity, t).
 - raw_stock_bars(ticker, ts, open, high, low, close, volume, ohlc_all_nan): ts is the bar
   START (UTC); de-duplicated on (ticker, ts). Re-stamping to bar end happens in step 4.

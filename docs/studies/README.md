@@ -60,6 +60,8 @@ tests, and import it from there in both.
    [`_template/handoff/step.md`](_template/handoff/step.md) to
    `docs/studies/<id>/handoff/step<N>.md` and follow the workflow in `CLAUDE.md`: plan, build,
    `scripts/check.sh`, independent validation, commit, code review before the push.
+   If the package ships non-Python files (e.g. a findings template `*.txt`), list them under
+   `[tool.setuptools.package-data]` in `pyproject.toml`.
 6. **Generate, don't type.** The analysis writes a results file; the findings report and the page
    read only that file. A number that is not in the results is not shown.
 7. **Close out.** Verdicts and review paths go into `docs/progress.md`, open minors into

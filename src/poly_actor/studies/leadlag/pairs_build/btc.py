@@ -12,10 +12,10 @@ import sys
 from datetime import UTC, datetime
 from typing import NamedTuple
 
+from poly_actor.core.timeutil import et_to_utc
 from poly_actor.studies.leadlag.pairs import (
     BtcRung,
     detect_partial_window,
-    et_to_utc,
     flag_created_after_touch,
     monotone_ladder_crossing_diag,
     parse_from_date,
@@ -311,9 +311,9 @@ BTC_STATIC: dict = {
     "signal": {
         "name": "btc_ladder_level_and_skew",
         "per_hour_procedure": [
-            "A20/A21 RUNG SELECTION (poly_actor.studies.leadlag.pairs.select_ladder): at hour t a dip strike K is TOUCHED if any dip rung with strike <= K in that month has closed_time <= t and resolved Yes (BTC fell to the lower strike, so it fell to every higher one); an up strike K is TOUCHED if any up rung with strike >= K has closed_time <= t and resolved Yes. A touched strike has P=1 and every rung at that strike (fresh or not) is ignored. For an untouched strike use the whole-month rung if one exists at that strike AT t (created_utc <= t; a whole-month rung created after t does not suppress a partial rung); use a partial-window rung (partial_window=true, partial_window_detected_by lists slug / description_creation / description_between / created_after_touch) only if no whole-month rung exists at that strike. At most ONE rung per strike per hour (no tie-averaging of different questions; ties among eligible rungs of one kind: earliest created_utc, then slug). A rung with no CLOB quote at t is skipped at t. Rung direction comes from the resolution text (final High price = up, final Low price = dip), falling back to the question; rungs where the description overrides the question carry direction_from_description=true (A21). Rungs with active=false and no closedTime in the final snapshot (inactive_excluded; Gamma may still carry a stale outcomePrices) are excluded.",
+            "A20/A21 RUNG SELECTION (poly_actor.pairs.select_ladder): at hour t a dip strike K is TOUCHED if any dip rung with strike <= K in that month has closed_time <= t and resolved Yes (BTC fell to the lower strike, so it fell to every higher one); an up strike K is TOUCHED if any up rung with strike >= K has closed_time <= t and resolved Yes. A touched strike has P=1 and every rung at that strike (fresh or not) is ignored. For an untouched strike use the whole-month rung if one exists at that strike AT t (created_utc <= t; a whole-month rung created after t does not suppress a partial rung); use a partial-window rung (partial_window=true, partial_window_detected_by lists slug / description_creation / description_between / created_after_touch) only if no whole-month rung exists at that strike. At most ONE rung per strike per hour (no tie-averaging of different questions; ties among eligible rungs of one kind: earliest created_utc, then slug). A rung with no CLOB quote at t is skipped at t. Rung direction comes from the resolution text (final High price = up, final Low price = dip), falling back to the question; rungs where the description overrides the question carry direction_from_description=true (A21). Rungs with active=false and no closedTime in the final snapshot (inactive_excluded; Gamma may still carry a stale outcomePrices) are excluded.",
             f"A rung counts at hour t only if its event has been open for at least {BTC_MIN_EVENT_AGE_H}h (t >= gamma_start + {BTC_MIN_EVENT_AGE_H}h; see first_usable_utc) AND the RUNG ITSELF is at least {BTC_MIN_EVENT_AGE_H}h old (t >= created_utc + {BTC_MIN_EVENT_AGE_H}h = rung_usable_from_utc; A15) AND the rung is open at t (t < closed_time or closed_time null); touched strikes follow the A20 rule above (P=1 from the touching rung's closed_time). NO lifetime-volume filter: lifetime volume is only known at pull time (look-ahead). Step 3 may add cumulative-volume-to-t (computed from trades, if available) as a time-t liquidity filter.",
-            "Up-ladder: selected rungs 'reach $K' ordered by K ascending (P non-increasing). Before interpolating, apply isotonic regression (safety net only after A20) (pool-adjacent-violators, unit weights) to the hour's rung probabilities: non-increasing in strike on the up-ladder, non-decreasing in strike on the dip-ladder (A15; poly_actor.studies.leadlag.pairs.monotone_ladder_crossing). Then take the FIRST crossing of 0.5 walking away from spot and find the strike K_up* by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
+            "Up-ladder: selected rungs 'reach $K' ordered by K ascending (P non-increasing). Before interpolating, apply isotonic regression (safety net only after A20) (pool-adjacent-violators, unit weights) to the hour's rung probabilities: non-increasing in strike on the up-ladder, non-decreasing in strike on the dip-ladder (A15; poly_actor.pairs.monotone_ladder_crossing). Then take the FIRST crossing of 0.5 walking away from spot and find the strike K_up* by linear interpolation of log(K) in P between the two bracketing rungs. No extrapolation; if 0.5 is not bracketed, drop the hour.",
             "Dip-ladder: rungs 'dip to $K' ordered by K descending; find K_dn* where P=0.5 the same way.",
             "ladder_level = exp((ln K_up* + ln K_dn*)/2); half_width = (ln K_up* - ln K_dn*)/2.",
             "skew = ln K_up* + ln K_dn* - 2*ln(S_t) with S_t = BTC-USD spot (positive = upside rungs further away than downside rungs relative to spot).",
@@ -322,7 +322,7 @@ BTC_STATIC: dict = {
         "min_rung_age_hours": BTC_MIN_EVENT_AGE_H,
         "ladder_monotone_fit": "isotonic regression (PAVA) per ladder per hour before the 0.5 crossing (A15)",
         "partial_window_rungs": "recorded per month (partial_window_rungs, with detection methods) and summarised in coverage.partial_window_summary; used only per the A20 fallback rule",
-        "pav_pooling_metric": "isotonic regression is only a safety net after A20 selection; step 3 logs the share of hours where PAV pools anything (poly_actor.studies.leadlag.pairs.monotone_ladder_crossing_diag)",
+        "pav_pooling_metric": "isotonic regression is only a safety net after A20 selection; step 3 logs the share of hours where PAV pools anything (poly_actor.pairs.monotone_ladder_crossing_diag)",
         "dropped_hours_metric": "step 3 reports the share of hours dropped (0.5 not bracketed, no usable rungs, month-start gap) per month and overall",
         "primary_signal": "hourly change in ln(ladder_level)",
         "why_not_nearest_0.5_reach_threshold": (

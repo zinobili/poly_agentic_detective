@@ -17,5 +17,9 @@ python -m poly_actor.studies.leadlag.refresh --workers 4   # ingest -> align -> 
 streamlit run src/poly_actor/studies/leadlag/dashboard/app.py
 ```
 
+`config/leadlag/pairs.yaml` is the version approved on 2026-10-01, reproduced byte for byte by the
+builder. Paths and module names written inside it are those of that date (map:
+[`docs/README.md`](../../README.md)).
+
 Data for this study sits at the top of `data/raw/` and `data/clean/` (it predates the per-study
 data folders).

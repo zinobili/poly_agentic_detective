@@ -14,15 +14,25 @@ PKG = ROOT / "src" / "poly_actor"
 
 
 def _imports(path: Path) -> set[str]:
-    """Every absolute module name imported anywhere in the file (including inside functions)."""
+    """Every module name imported anywhere in the file (including inside functions), as an
+    absolute dotted name: relative imports are resolved against the file's own package."""
+    package = list(path.relative_to(PKG.parent).with_suffix("").parts[:-1])
     out: set[str] = set()
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Import):
             out.update(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            out.add(node.module)
-            out.update(f"{node.module}.{a.name}" for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = package[: len(package) - node.level + 1] if node.level else []
+            module = ".".join([*base, *([node.module] if node.module else [])])
+            out.add(module)
+            out.update(f"{module}.{a.name}" for a in node.names)
     return out
+
+
+def test_relative_imports_are_resolved_to_absolute_names():
+    """A `from ..election import x` inside a study must not slip past the rules below."""
+    sample = PKG / "studies" / "leadlag" / "dashboard" / "charts.py"
+    assert "poly_actor.studies.leadlag.dashboard.contract" in _imports(sample)
 
 
 def _study_packages() -> list[str]:
@@ -31,7 +41,9 @@ def _study_packages() -> list[str]:
 
 def test_core_never_imports_a_study():
     offenders = {
-        str(f.relative_to(ROOT)): sorted(m for m in _imports(f) if ".studies" in m)
+        str(f.relative_to(ROOT)): sorted(
+            m for m in _imports(f) if m.startswith("poly_actor.studies")
+        )
         for f in (PKG / "core").rglob("*.py")
     }
     assert {k: v for k, v in offenders.items() if v} == {}

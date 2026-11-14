@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from poly_actor.core.timeutil import et_to_utc
 from poly_actor.studies.leadlag.pairs import (
     BtcRung,
     detect_partial_window,
     direction_from_description,
-    et_to_utc,
     flag_created_after_touch,
     is_touched,
     isotonic_fit,
