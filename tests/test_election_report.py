@@ -429,3 +429,57 @@ def test_guarded_block_logs_the_cause_when_inputs_are_missing(bundle, caplog):
     with caplog.at_level("WARNING"):
         block = text.h4_chart(res)
     assert block.missing and "not rendered from the bundle" in caplog.text
+
+
+# ---------------------------------------------------------------- validator round 1
+
+
+def test_findings_never_call_present_data_missing(bundle):
+    """r1 major 1: a block whose data is in the bundle is stated, also without chart series."""
+    md = findings.render(bundle.results, "0" * 12)
+    assert "not in the results" not in md.lower()
+    cts = text.chart_texts(bundle.results, {})
+    present = [k for k in cts if k not in ("odds", "returns")]  # those two are series-only
+    assert [k for k in present if cts[k].missing] == []
+    e1 = bundle.results["exploratory"]["e1"]
+    assert text.pct(e1["last30_minus_before_b10_pct"]) in md.split("E1 · ")[1].split("###")[0]
+
+
+def test_e1_title_and_so_what_agree(bundle, res):
+    """r1 minor: the title states the post-hoc shift; it never says the estimate was stable."""
+    with_series = text.e1_chart(res, bundle.series["e1_rolling"])
+    alone = text.e1_chart(res)
+    assert with_series.title == alone.title and "not stable" in alone.title
+    assert "5.6% per 10 points lower" in alone.title and "after the fact" in alone.title
+    assert "on both sides of zero" in with_series.so_what and "ranged" not in alone.so_what
+    assert "not chosen in advance" in alone.so_what
+    res["exploratory"]["e1"]["last30_minus_before_b10_pct"] = 2.0
+    assert "2.0% per 10 points higher" in text.e1_chart(res).title
+
+
+def test_e5_title_is_sign_aware(res):
+    """r1 minor: -4.49 overall and +1.11 after the event day is a reversal, not a narrowing."""
+    title = text.e5_chart(res).title
+    assert "trailed" in title and "ran the other way (+1.1%)" in title
+    assert "narrowed" not in title
+    res["exploratory"]["e5"]["car_top_minus_bottom_ex_event_day_pct"] = -2.0
+    assert "kept going the same way after the event day (−2.0%)" in text.e5_chart(res).title
+    res["exploratory"]["e5"]["car_top_minus_bottom_pct"] = 3.0
+    assert "beat" in text.e5_chart(res).title and "ran the other way" in text.e5_chart(res).title
+
+
+def test_methods_and_amendments_claim_only_what_was_done(bundle):
+    """r1 major 2 and minors: no surprise construction is claimed; A1 to A3 are all named."""
+    res = bundle.results
+    prose = " ".join(i for _, items in text.methods(res) for i in items)
+    assert "urprise" not in prose and "A fixed event window on abnormal returns" in prose
+    notes = text.amendments(res)
+    assert [n[:2] for n in notes] == ["A1", "A2", "A3"] and "(A1, A2, A3)" in text.DISCLOSURE
+    assert "opening level" in notes[2] and untraced_numbers(" ".join(notes), res) == []
+    meaning = " ".join(f"{a} {b}" for a, b in text.what_it_means(res))
+    assert text.points(res["h2"]["event_dp_sen"]) not in meaning  # MDE not set beside the move
+    everything = meaning + text.WHY_IT_MATTERS + text.e2_moves_chart(res).so_what
+    for phrase in ("wasted premium", "simply noisier", "did not describe"):
+        assert phrase not in everything
+    md = findings.render(res, "0" * 12)
+    assert md.count("- A3, from the independent validation") == 1

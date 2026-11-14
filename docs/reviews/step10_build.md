@@ -119,3 +119,40 @@ left out because the bundle does not carry them:
 6. Lessons: headlines come from the pre-registered verdicts only (tested: emptying the
    exploratory and robustness trees leaves the headline, cards and takeaways unchanged); UTC is
    kept in the data and converted to ET with zoneinfo only for display; no network in tests.
+
+## Round 2 fixes (validator r1, `docs/reviews/step10_r1.md`; 2026-11-14)
+Text only. No statistic, bundle file or frozen module changed.
+
+Majors
+1. **E1 in findings.md.** `e1_chart` now builds its title, so-what and expert note from
+   `exploratory.e1` alone; the rolling series only adds one sentence with its range. findings.md
+   states E1 (the late-sample shift, its 90% range and that it is post hoc). `chart_texts` no
+   longer tries the two series-only blocks (odds, cumulative returns) when the series is absent,
+   so `report` runs without logging warnings. New test: the findings rendered from the fixture
+   contain no "not in the results", and no block with data in the bundle is marked missing.
+2. **"Surprise-based event windows" removed.** The method block now reads "A fixed event window
+   on abnormal returns. Election night is measured from the election-day close to the next close
+   ...". This departs from the wording in the original brief, because the study has no surprise
+   construction. A test asserts the word is gone.
+
+Minors
+- Amendments: the disclosure names A1, A2 and A3, and a new `amendments()` list (page and
+  findings section 11) states each in plain words. A3's own recomputed figures are not in the
+  bundle, so they are described without numbers; the pre-registered row that covers the
+  opening-print day is quoted from the bundle.
+- E5 title is sign-aware: "after the event day the gap ran the other way (+1.1%)". Tested for
+  the flip, the same-sign case and the "beat" case.
+- E2 so-what: the two figures are "shown side by side with no claim that one explains the other".
+- "What this means": the MDE bullet no longer mentions the election-night odds move; "wasted
+  premium" is gone from the intro; "simply noisier" became "the AI estimate is less precise".
+- E1 title and so-what now say the same thing: not stable through the year, with the shift
+  called a split made after the fact.
+
+Outputs
+- `docs/election/findings.md` regenerated (byte-identical on a second run).
+- Screenshots re-taken at 1360 px wide (deviceScaleFactor 1), 128-colour palette PNG:
+  `01-answer.png`, `08-derivatives.png`, `09-exploratory.png`, `10-method.png`, 58 to 166 KB
+  each. `full-page.png` was not re-added. Headless run: HTTP 200, 14 charts, 0 exception boxes.
+- Tests: 4 added in `tests/test_election_report.py`.
+- Still deferred: the `panel.py` and `ingest.py` minors of the step-9 batch.
+- `bash scripts/check.sh`: **PASS** (595 passed, 1 skipped; ruff ok).

@@ -10,7 +10,7 @@ The interactive version of this report is the Streamlit page `src/poly_actor/ele
 
 H1: Too noisy to tell (confidence Low); b = -0.566% per +10 pts of P(D Senate), 90% CI [-1.649, +0.517], permutation p = 0.507, MDE80 = 1.840%. H2: Betas did not predict election night (confidence Low); rho = -0.372, one-sided p = 0.975.
 
-The question: Did AI stocks move with the odds that Democrats would take Congress, over and above the broad market? And did each stock's sensitivity, measured before the election, tell you which names would reprice on election night? If the sensitivity is real and stable, election risk in an AI book can be sized and hedged ahead of time. If it is zero, an election hedge on AI names was wasted premium.
+The question: Did AI stocks move with the odds that Democrats would take Congress, over and above the broad market? And did each stock's sensitivity, measured before the election, tell you which names would reprice on election night? If the sensitivity is real and stable, election risk in an AI book can be sized and hedged ahead of time. If it is zero, there was no election beta in AI names to hedge.
 
 |  | Verdict | Confidence | Finding |
 |---|---|---|---|
@@ -28,8 +28,8 @@ The pre-registered checks behind the two verdicts:
 ## 2. What this means for an AI book going into an election
 
 - **No measured beta to size a hedge on.** Over 325 pre-election sessions the AI basket's sensitivity to Senate odds could not be told from zero. The data gave no basis for sizing an election hedge on AI names from prediction-market odds.
-- **That is not the same as no exposure.** A sensitivity below about 1.84% per 10 points would likely have been missed. Senate odds moved 25.5 points over the event window, so a sensitivity that size would not have been a small move on the night.
-- **The non-AI basket is the reference point.** Its estimate is +0.01% per 10 points, and an effect of about 0.36% or more would likely have been detected. The same method on ordinary large caps gives a tight answer; AI names are simply noisier against the odds.
+- **That is not the same as no exposure.** A sensitivity below about 1.84% per 10 points would likely have been missed, so this null does not rule out an exposure of that order. It bounds what the data could see; it does not measure what was there.
+- **The non-AI basket is the reference point.** Its estimate is +0.01% per 10 points, and an effect of about 0.36% or more would likely have been detected. The same method gives a tighter answer on ordinary large caps; the AI estimate is less precise.
 - **Betas were not a guide to who repriced.** Ranking AI names by their pre-election beta would not have picked the election-night winners. On other large-odds days before the election the same ranking averaged +0.05 on a −1 to +1 scale (one-sided p = 0.115), which is not reliably better than chance.
 - **What the night itself looked like (descriptive).** Over the event window the AI names' mean return, after taking out the market and bonds, was −5.37% against +0.89% for the non-AI names. That is one night, and the design cannot say what caused it.
 
@@ -143,7 +143,7 @@ Nothing in this section was a pre-registered test. Each item is a lead for the n
 
 **In 2026 the Nasdaq-100's next-day move landed inside what options had priced; in the 3 earlier elections shown it landed outside.**
 
-Exploratory. In 2026 options implied a one-day move of 1.92% and the index moved +0.91%. Over the same window the AI names' mean return after market and bonds was −5.37%: index-level volatility did not describe the move in the AI names. One night; descriptive.
+Exploratory. In 2026 options implied a one-day move of 1.92% and the index moved +0.91%. Over the same window the AI names' mean return after market and bonds was −5.37%. The two figures measure different things, an index and a basket of single names, and are shown side by side with no claim that one explains the other. One night; descriptive.
 
 For experts: Implied one-day move = VXN / √(trading days in a year) at the election-day close. 2018: implied 1.65%, realised +3.02%, ratio 1.83; 2022: implied 1.99%, realised −2.40%, ratio 1.21; 2024: implied 1.42%, realised +2.70%, ratio 1.91; 2026: implied 1.92%, realised +0.91%, ratio 0.47.
 
@@ -157,7 +157,11 @@ For experts: Ratios of Cboe indices at the daily close: VIX9D/VIX, VIX/VIX3M and
 
 ### E1 · Was the sensitivity stable?
 
-Not in the results.
+**The estimate was not stable through the year: it was 5.6% per 10 points lower in the last sessions before the election, a split made after the fact.**
+
+Exploratory. Before 22 Sep 2026 the estimate was +0.32% per 10 points; from that date it was −5.56% against before (90% range −6.90% to −4.21%). The split point was not chosen in advance and the late slice covers one regime, so this is a hypothesis for the next election, not a result.
+
+For experts: Rolling 60-session regression, same specification as H1. Late-sample shift from an interaction term, HAC p < 0.001, uncorrected and post hoc.
 
 ### E3 · State data-centre moratorium markets
 
@@ -169,7 +173,7 @@ For experts: Spearman rho = +0.26, 90% range −0.05 to +0.52, two-sided p = 0.1
 
 ### E5 · After the election
 
-**High-beta names trailed low-beta names by 4.5% through 12 Nov, and the gap narrowed after the event day.**
+**High-beta names trailed low-beta names by 4.5% through 12 Nov; after the event day the gap ran the other way (+1.1%).**
 
 Exploratory. 10 names in each group over a handful of sessions: a description of what followed, with no test behind it.
 
@@ -182,7 +186,7 @@ For experts: Top minus bottom tercile from 4 Nov 2026 to 12 Nov 2026: −4.49%; 
 - Factor-neutral returns. Each basket's return is measured after taking out the market and long bonds, so a general risk-on day is not mistaken for an election effect.
 - An equal-weight market control. AI names dominate cap-weighted indices, so a cap-weighted control would absorb the very effect being tested. The control here is the equal-weight S&P 500; the cap-weighted version is a robustness row.
 - A placebo basket. 29 large caps with no AI thesis, picked before any return was seen, go through the same tests. An effect they share is not an AI effect.
-- Surprise-based event windows. Election night is measured from the last close before the result to the next close, against each stock's own market and bond sensitivity, not as a raw price change.
+- A fixed event window on abnormal returns. Election night is measured from the election-day close to the next close, against each stock's own market and bond sensitivity, not as a raw price change.
 - Power, so a null is bounded. The smallest effect the test could reliably detect is reported next to every null, so 'nothing found' is never read as 'nothing there'.
 - Out-of-sample checks. Betas are scored on days they were not estimated on (walk-forward), and election week is kept out of the betas tested on election night.
 
@@ -221,7 +225,11 @@ For experts: Top minus bottom tercile from 4 Nov 2026 to 12 Nov 2026: −4.49%; 
 
 ## 11. What had been seen before the plan was frozen
 
-This is a retrospective study: the plan was frozen after the election, so it could not be blind to the outcome. Before the freeze the following had been seen: who won each chamber, a handful of Polymarket price points, the hourly Nasdaq futures path on election night and the last prices of a few tickers. No return series of the AI names against the odds, no regression, correlation, basket return or volatility path had been seen. Because the futures path had been seen, the election-night block is capped at descriptive. The direction of the H2 test rests on the sign of the election-night odds move, which was known. Changes made after the freeze are dated amendments (A1, A2) in the pre-registration.
+This is a retrospective study: the plan was frozen after the election, so it could not be blind to the outcome. Before the freeze the following had been seen: who won each chamber, a handful of Polymarket price points, the hourly Nasdaq futures path on election night and the last prices of a few tickers. No return series of the AI names against the odds, no regression, correlation, basket return or volatility path had been seen. Because the futures path had been seen, the election-night block is capped at descriptive. The direction of the H2 test rests on the sign of the election-night odds move, which was known. Changes and disclosures made after the freeze are dated amendments (A1, A2, A3) in the pre-registration.
+
+- A1, before any return was compared with odds: once a market has settled its price is its last traded price; returns and staleness limits were pinned down; and the direction of the H2 test was disclosed as resting on a known sign.
+- A2, after the run, disclosure only: odds move in coarse steps, so the walk-forward keeps every day tied at its threshold and scores 74 days; the H1 permutation draws 1,000 times from 286 distinct shifts; and the H2 correlation came out against the tested direction.
+- A3, from the independent validation, disclosure only: the first odds change in the sample is the market finding its opening level after a week without trades, not news. It stays in under the frozen sample rule, and the pre-registered row without the largest odds-move days covers it (−0.74% per 10 points, permutation p = 0.492). Counting every admissible shift once gives a slightly different H1 permutation p and the same verdict. The exploratory H2 observation sits at the conventional line within simulation error and stays not a finding.
 
 ## 12. Reproduce
 

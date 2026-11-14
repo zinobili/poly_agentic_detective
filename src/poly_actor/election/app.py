@@ -247,6 +247,7 @@ def _render_method(res: text.Results) -> None:
     with right, st.container(border=True):
         st.markdown("**What had been seen before the plan was frozen**")
         st.write(text.DISCLOSURE)
+        st.markdown("\n".join(f"- {item}" for item in text.amendments(res)))
 
 
 def main() -> None:

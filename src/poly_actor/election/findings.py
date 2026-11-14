@@ -90,9 +90,9 @@ def _exploratory(cts: dict[str, text.ChartText]) -> str:
         if ct.missing:
             parts.append(f"### {ct.kicker}\n\n{text.MISSING.capitalize()}.")
             continue
-        # The E1 title is built from the chart series, which this report does not read.
-        title = "" if key == "e1" else f"**{ct.title}.**\n\n"
-        parts.append(f"### {ct.kicker}\n\n{title}{ct.so_what}\n\nFor experts: {ct.expert}")
+        parts.append(
+            f"### {ct.kicker}\n\n**{ct.title}.**\n\n{ct.so_what}\n\nFor experts: {ct.expert}"
+        )
     return "\n\n".join(parts)
 
 
@@ -150,7 +150,7 @@ def slots(res: text.Results, results_fingerprint: str) -> dict[str, str]:
         "exploratory": _exploratory(cts),
         "methods": _methods(res),
         "does_not_show": _bullets(text.does_not_show(res)),
-        "disclosure": text.DISCLOSURE,
+        "disclosure": text.DISCLOSURE + "\n\n" + _bullets(text.amendments(res)),
         "footer": text.FOOTER,
     }
 

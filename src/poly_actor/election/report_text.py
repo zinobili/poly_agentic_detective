@@ -15,7 +15,7 @@ import logging
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from functools import wraps
 from typing import Any
@@ -48,7 +48,7 @@ QUESTION = (
 )
 WHY_IT_MATTERS = (
     "If the sensitivity is real and stable, election risk in an AI book can be sized and hedged "
-    "ahead of time. If it is zero, an election hedge on AI names was wasted premium."
+    "ahead of time. If it is zero, there was no election beta in AI names to hedge."
 )
 
 SUB_LABELS = {
@@ -341,7 +341,6 @@ def what_it_means(res: Results) -> list[tuple[str, str]]:
     v1, v2 = verdicts(res)
     ai, pl = get(res, "h1", "ai") or {}, get(res, "h1", "placebo") or {}
     mde = pct(get(ai, "mde10_pct"), signed=False)
-    dp = points(get(res, "h2", "event_dp_sen"))
     n = count(get(ai, "n"))
     out: list[tuple[str, str]] = []
     if v1 == H1_NOISY:
@@ -356,9 +355,9 @@ def what_it_means(res: Results) -> list[tuple[str, str]]:
         out.append(
             (
                 "That is not the same as no exposure.",
-                f"A sensitivity below about {mde} per 10 points would likely have been missed. "
-                f"Senate odds moved {dp} over the event window, so a sensitivity that size "
-                "would not have been a small move on the night.",
+                f"A sensitivity below about {mde} per 10 points would likely have been missed, "
+                "so this null does not rule out an exposure of that order. It bounds what the "
+                "data could see; it does not measure what was there.",
             )
         )
     elif v1 == H1_BOUNDED:
@@ -390,8 +389,8 @@ def what_it_means(res: Results) -> list[tuple[str, str]]:
             "The non-AI basket is the reference point.",
             f"Its estimate is {pct(get(pl, 'b10_pct'))} per 10 points, and an effect of about "
             f"{pct(get(pl, 'mde10_pct'), signed=False)} or more would likely have been detected. "
-            "The same method on ordinary large caps gives a tight answer; AI names are simply "
-            "noisier against the odds.",
+            "The same method gives a tighter answer on ordinary large caps; the AI estimate "
+            "is less precise.",
         )
     )
     b2 = get(res, "h2b", "ai") or {}
@@ -1031,8 +1030,9 @@ def e2_moves_chart(res: Results) -> ChartText:
         f"{EXPLORATORY}. In {year} options implied a one-day move of "
         f"{pct(last['implied_1d_pct'], signed=False)} and the index moved "
         f"{pct(last['realised_next_day_pct'])}. Over the same window the AI names' mean return "
-        f"after market and bonds was {pct(get(w, 'mean_ar_pct'))}: index-level volatility did "
-        "not describe the move in the AI names. One night; descriptive.",
+        f"after market and bonds was {pct(get(w, 'mean_ar_pct'))}. The two figures measure "
+        "different things, an index and a basket of single names, and are shown side by side "
+        "with no claim that one explains the other. One night; descriptive.",
         "Implied one-day move = VXN / √(trading days in a year) at the election-day close. "
         + "; ".join(
             f"{k[:4]}: implied {pct(moves[k]['implied_1d_pct'], signed=False)}, realised "
@@ -1046,21 +1046,32 @@ def e2_moves_chart(res: Results) -> ChartText:
 
 
 @_guarded("E1 · Was the sensitivity stable?", EXPLORATORY)
-def e1_chart(res: Results, rolling: pd.DataFrame) -> ChartText:
+def e1_chart(res: Results, rolling: pd.DataFrame | None = None) -> ChartText:
+    """Built from ``exploratory.e1`` alone; the rolling series only adds its range."""
     e1 = res["exploratory"]["e1"]
-    lo, hi = rolling["b10_pct"].min(), rolling["b10_pct"].max()
+    shift = e1["last30_minus_before_b10_pct"]
+    way = "lower" if shift < 0 else "higher"
+    swing = ""
+    if rolling is not None and len(rolling) and "b10_pct" in rolling.columns:
+        lo, hi = rolling["b10_pct"].min(), rolling["b10_pct"].max()
+        sides = ", on both sides of zero" if lo < 0 < hi else ""
+        swing = (
+            f" Across the year the rolling estimate ranged from {pct(lo, 1)} to {pct(hi, 1)} "
+            f"per 10 points{sides}."
+        )
     return ChartText(
         "E1 · Was the sensitivity stable?",
-        f"The rolling estimate swung between {pct(lo, 1)} and {pct(hi, 1)} per 10 points, so "
-        "no stable sensitivity stands out",
+        "The estimate was not stable through the year: it was "
+        f"{pct(abs(shift), 1, signed=False)} per 10 points {way} in the last sessions before the "
+        "election, a split made after the fact",
         f"The line is the H1 estimate re-run on each trailing window of {count(e1['window'])} "
         "sessions. The shaded band is its 90% range. Where the band covers zero, that window "
         "shows no detectable sensitivity.",
-        f"{EXPLORATORY}. The last sessions before the election look different from the rest "
-        f"(from {day(e1['last30_start'])}: {pct(e1['last30_minus_before_b10_pct'])} per 10 "
-        f"points against before, 90% range {span(e1['last30_minus_before_ci10_pct'])}). That "
-        "slice was not chosen in advance and covers one regime, so it is a hypothesis for the "
-        "next election, not a result.",
+        f"{EXPLORATORY}.{swing} Before {day(e1['last30_start'])} the estimate was "
+        f"{pct(e1['before_b10_pct'])} per 10 points; from that date it was {pct(shift)} against "
+        f"before (90% range {span(e1['last30_minus_before_ci10_pct'])}). The split point was "
+        "not chosen in advance and the late slice covers one regime, so this is a hypothesis "
+        "for the next election, not a result.",
         f"Rolling {count(e1['window'])}-session regression, same specification as H1. Late-sample "
         f"shift from an interaction term, HAC {p_eq(e1['p_hac'])}, uncorrected and post hoc.",
         EXPLORATORY,
@@ -1094,14 +1105,15 @@ def e3_chart(res: Results) -> ChartText:
 def e5_chart(res: Results) -> ChartText:
     e5 = res["exploratory"]["e5"]
     total, after = e5["car_top_minus_bottom_pct"], e5["car_top_minus_bottom_ex_event_day_pct"]
-    way = "narrowed" if (total < 0) != (after < 0) else "widened"
+    verb = "trailed" if total < 0 else "beat"
+    if (total < 0) != (after < 0):  # the sign flipped once the event day is left out
+        tail = f"after the event day the gap ran the other way ({pct(after, 1)})"
+    else:
+        tail = f"the gap kept going the same way after the event day ({pct(after, 1)})"
     return ChartText(
         "E5 · After the election",
-        f"High-beta names trailed low-beta names by {pct(abs(total), 1, signed=False)} through "
-        f"{day(e5['end'], False)}, and the gap {way} after the event day"
-        if total < 0
-        else f"High-beta names beat low-beta names by {pct(abs(total), 1, signed=False)} through "
-        f"{day(e5['end'], False)}, and the gap {way} after the event day",
+        f"High-beta names {verb} low-beta names by {pct(abs(total), 1, signed=False)} through "
+        f"{day(e5['end'], False)}; {tail}",
         "Cumulative return after market and bonds for the third of AI names with the highest "
         "pre-election betas, the third with the lowest, and the difference between them.",
         f"{EXPLORATORY}. {count(len(e5['top']))} names in each group over a handful of "
@@ -1114,10 +1126,14 @@ def e5_chart(res: Results) -> ChartText:
 
 def chart_texts(res: Results, series: Mapping[str, pd.DataFrame]) -> dict[str, ChartText]:
     """Every chart block of the page, keyed by a short id (page order)."""
-    empty = pd.DataFrame()
+    odds, cum = series.get("odds_daily"), series.get("cum_log_returns")
+    absent = ChartText("", MISSING.capitalize(), "", "", "", missing=True)
     return {
-        "odds": odds_chart(res, series.get("odds_daily", empty)),
-        "returns": returns_chart(res, series.get("cum_log_returns", empty)),
+        # Built from a chart series only: without the series there is nothing to try.
+        "odds": odds_chart(res, odds) if odds is not None else replace(absent, kicker="The signal"),
+        "returns": returns_chart(res, cum)
+        if cum is not None
+        else replace(absent, kicker="The stocks"),
         "h1": h1_chart(res),
         "h5": h5_chart(res),
         "h2": h2_chart(res),
@@ -1127,7 +1143,7 @@ def chart_texts(res: Results, series: Mapping[str, pd.DataFrame]) -> dict[str, C
         "h4": h4_chart(res),
         "e2_term": e2_term_chart(res),
         "e2_moves": e2_moves_chart(res),
-        "e1": e1_chart(res, series.get("e1_rolling", empty)),
+        "e1": e1_chart(res, series.get("e1_rolling")),
         "e3": e3_chart(res),
         "e5": e5_chart(res),
     }
@@ -1168,8 +1184,8 @@ def methods(res: Results) -> list[tuple[str, list[str]]]:
                 f"A placebo basket. {count(n_names(res, 'placebo'))} large caps with no AI "
                 "thesis, picked before any return was seen, go through the same tests. An effect "
                 "they share is not an AI effect.",
-                "Surprise-based event windows. Election night is measured from the last close "
-                "before the result to the next close, against each stock's own market and bond "
+                "A fixed event window on abnormal returns. Election night is measured from the "
+                "election-day close to the next close, against each stock's own market and bond "
                 "sensitivity, not as a raw price change.",
                 "Power, so a null is bounded. The smallest effect the test could reliably detect "
                 "is reported next to every null, so 'nothing found' is never read as 'nothing "
@@ -1271,8 +1287,38 @@ DISCLOSURE = (
     "regression, correlation, basket return or volatility path had been seen. Because the "
     "futures path had been seen, the election-night block is capped at descriptive. The "
     "direction of the H2 test rests on the sign of the election-night odds move, which was "
-    "known. Changes made after the freeze are dated amendments (A1, A2) in the pre-registration."
+    "known. Changes and disclosures made after the freeze are dated amendments (A1, A2, A3) in "
+    "the pre-registration."
 )
+
+
+def amendments(res: Results) -> list[str]:
+    """The dated amendments of the pre-registration, in plain words (no rule or verdict changed
+    by A2 or A3). Numbers come from the bundle; the validator's own recomputations are not in
+    it and are described without figures."""
+    ai = get(res, "h1", "ai") or {}
+    drop = next(
+        (r for r in get(res, "robustness") or [] if str(r.get("name", "")).startswith("drop")), {}
+    )
+    return [
+        "A1, before any return was compared with odds: once a market has settled its price is "
+        "its last traded price; returns and staleness limits were pinned down; and the "
+        "direction of the H2 test was disclosed as resting on a known sign.",
+        "A2, after the run, disclosure only: odds move in coarse steps, so the walk-forward "
+        "keeps every day tied at its threshold and scores "
+        f"{count(get(res, 'h2b', 'ai', 'n'))} days; the H1 permutation draws "
+        f"{count(get(ai, 'n_shifts'))} times from {count(get(ai, 'n_distinct_shifts'))} distinct "
+        "shifts; and the H2 correlation came out against the tested direction.",
+        "A3, from the independent validation, disclosure only: the first odds change in the "
+        "sample is the market finding its opening level after a week without trades, not news. "
+        "It stays in under the frozen sample rule, and the pre-registered row without the "
+        f"largest odds-move days covers it ({pct(drop.get('b10_pct'))} per 10 points, "
+        f"permutation {p_eq(drop.get('p_perm'))}). Counting every admissible shift once gives a "
+        "slightly different H1 permutation p and the same verdict. The exploratory H2 "
+        "observation sits at the conventional line within simulation error and stays not a "
+        "finding.",
+    ]
+
 
 GLOSSARY: tuple[tuple[str, str, str], ...] = (
     (
