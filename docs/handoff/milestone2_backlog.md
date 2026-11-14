@@ -18,3 +18,20 @@
 - `pyproject.toml` pins `streamlit>=1.40` but `dashboard/app.py` uses `st.context.theme` (newer); raise the floor.
 - `dashboard/style.py` builds CSS with `%` formatting; a literal `%` in the CSS would raise. Use token replace or note it.
 - Dashboard test covers `page_css` but not the `main()` theme wiring.
+
+## Election study (milestone 2, steps 8-10): open minors, 2026-11-14
+- Engineering (docs/reviews/push_2026-11-13b/c_crusader.md, push_2026-11-14/14b_crusader.md): shared
+  regression helper in the election analysis; split long functions and `report_text.py` (1,300+
+  lines); typed result objects; atomic writes of clean parquet and coverage.json in `panel.py`;
+  lazy `coverage` import; chart palette duplicated from `poly_actor.dashboard`; E1 title labels a
+  zero shift "higher"; fixture-coupled literals in report tests; machine-specific `election-linux`
+  launch entry.
+- Research (docs/reviews/step9_r1.md, step10_r2.md): noise tests use few seeds and 400 shifts; the
+  A3 recomputed figures are not in the bundle, so the page describes them without numbers.
+- Policy to decide: `reports/election/` tracks derived series built from Yahoo and Polymarket data
+  (basket-level returns, odds, one night of index-futures % changes, vol ratios). No raw per-ticker
+  history is tracked. If that is not acceptable for a public repo, move the bundle to `data/`.
+- Ideas the results point to (all would need a fresh pre-registration): the late-sample shift in
+  the rolling estimate; the sub-basket inequality (power/data-centre on the other side of zero);
+  the -5.4% vs +0.9% election-window gap between AI and non-AI names; single-name option-implied
+  moves (needs paid options history).
