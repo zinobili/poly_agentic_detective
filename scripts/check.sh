@@ -18,13 +18,13 @@ step "ruff format";       "$RUFF" format --check . -q && echo ok || fail=1
 step "pairs.yaml rebuild"
 if [ -d data/scratch/step2 ]; then
   "$PY" scripts/build_pairs.py >/dev/null 2>&1 \
-    && git diff --quiet -- config/pairs.yaml && echo "reproducible" \
+    && git diff --quiet -- config/leadlag/pairs.yaml && echo "reproducible" \
     || { echo "DIFFERS (or build failed)"; fail=1; }
 else echo "skipped (no data/scratch/step2 cache)"; fi
 
 step "ingest dry-run"
 if [ -d data/raw/polymarket ]; then
-  "$PY" -m poly_actor.ingest run --dry-run 2>&1 | grep -iE 'planned|calls' | tail -2 | tr '\n' ' '; echo
+  "$PY" -m poly_actor.studies.leadlag.ingest run --dry-run 2>&1 | grep -iE 'planned|calls' | tail -2 | tr '\n' ' '; echo
 else echo "skipped (no data/raw)"; fi
 
 [ $fail -eq 0 ] && echo "CHECK: PASS" || echo "CHECK: FAIL"

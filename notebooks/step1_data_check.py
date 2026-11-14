@@ -84,7 +84,7 @@ POLITE_SLEEP_S = 0.4
 
 # --- Markets selected for this spike -----------------------------------
 # Found via: GET {GAMMA_BASE}/events?tag_slug=fed-rates&closed=false (browsed
-# results, see docs/step1_data_check.md) and a direct slug lookup for the
+# results, see docs/studies/leadlag/step1_data_check.md) and a direct slug lookup for the
 # resolved September 2025 FOMC event.
 ACTIVE_EVENT_SLUG = "fed-decision-in-october-20260617190323537"  # Oct 2026 FOMC, open
 ACTIVE_SUBMARKET_SLUG = (
@@ -213,7 +213,7 @@ def parse_clob_history(
     2026-07-14 23:59 followed by an out-of-window point at 2026-10-01 (the
     time the request was made). Resolved markets did not show this. Callers
     MUST pass the same start_ts/end_ts they requested to get a safe result;
-    this is a step 3 ingestion requirement (see docs/step1_data_check.md).
+    this is a step 3 ingestion requirement (see docs/studies/leadlag/step1_data_check.md).
     """
     if body.get("status_code") != 200:
         return pd.DataFrame(columns=["ts_utc", "probability"])

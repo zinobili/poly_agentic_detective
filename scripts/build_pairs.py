@@ -1,7 +1,7 @@
-"""Regenerate config/pairs.yaml from cached Gamma API dumps.
+"""Regenerate config/leadlag/pairs.yaml from cached Gamma API dumps.
 
 Step 2 (pick pairs) tooling for milestone 1. This script is the single
-source of truth for how `config/pairs.yaml` was built: every market slug,
+source of truth for how `config/leadlag/pairs.yaml` was built: every market slug,
 CLOB token id, volume and date in the yaml traces back to a JSON file in
 `data/scratch/step2/` written by this script.
 
@@ -27,8 +27,8 @@ store. `data/raw/` is reserved for the production `ingest/` modules built in
 step 3 (see CLAUDE.md's "Raw data is immutable" rule) and this script must
 never write there.
 
-Important data-quality notes baked into this script (see docs/step2_pairs.md
-and docs/preregistration.md for the full writeup):
+Important data-quality notes baked into this script (see docs/studies/leadlag/step2_pairs.md
+and docs/studies/leadlag/preregistration.md for the full writeup):
   - Gamma event `endDate` is NOT the announcement/release time for either
     the Fed or CPI series -- it is set some hours (sometimes most of a day)
     *before* the actual 2pm ET FOMC statement / 8:30am ET BLS release. Roll
@@ -48,12 +48,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from poly_actor.pairs_build.emit import build_pairs_yaml
-from poly_actor.pairs_build.gamma import GammaClient, refetch_all
+from poly_actor.studies.leadlag.pairs_build.emit import build_pairs_yaml
+from poly_actor.studies.leadlag.pairs_build.gamma import GammaClient, refetch_all
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = REPO_ROOT / "data" / "scratch" / "step2"
-CONFIG_OUT = REPO_ROOT / "config" / "pairs.yaml"
+CONFIG_OUT = REPO_ROOT / "config" / "leadlag" / "pairs.yaml"
 
 
 def main(argv: list[str] | None = None) -> int:

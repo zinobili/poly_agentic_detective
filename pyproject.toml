@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "poly_actor"
 version = "0.0.1"
-description = "Polymarket-to-stock-market signal lab"
+description = "Signal lab: prediction-market and equity studies on one shared toolkit"
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.2",
@@ -37,8 +37,8 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"poly_actor.analysis" = ["*.txt"]  # findings_template.txt (prose of docs/findings.md)
-"poly_actor.election" = ["*.txt"]  # findings_template.txt (prose of docs/election/findings.md)
+"poly_actor.studies.leadlag.analysis" = ["*.txt"]  # findings_template.txt (prose of docs/studies/leadlag/findings.md)
+"poly_actor.studies.election" = ["*.txt"]  # findings_template.txt (prose of docs/studies/election/findings.md)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

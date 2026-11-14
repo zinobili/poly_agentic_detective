@@ -1,7 +1,7 @@
 # Lesson 1 — Time, Fidelity, and Look-Ahead Bias
 
 *Read time: ~10 minutes. No network calls — everything here is either a toy
-example or numbers already captured in `docs/step1_data_check.md` and
+example or numbers already captured in `docs/studies/leadlag/step1_data_check.md` and
 `notebooks/step1_data_check.py` from a real run.*
 
 This lesson is about the single most dangerous bug class in this whole
@@ -37,7 +37,7 @@ That's why the spike pushed for **1-minute or hourly bars**, not daily:
 
 **Why ≤15-day chunks?** This isn't a design choice we made for fun — it's a
 hard server limit we discovered by testing it directly (§1b of
-`docs/step1_data_check.md`, "max-range-per-request probe"): requesting more
+`docs/studies/leadlag/step1_data_check.md`, "max-range-per-request probe"): requesting more
 than 15 days of CLOB history in one call with explicit `startTs`/`endTs`
 returns an HTTP 400, *at both* `fidelity=1` and `fidelity=60`. So to get
 1-minute data across a 4-month FOMC market's whole life, you can't make one
@@ -77,7 +77,7 @@ only points between those two dates. Instead, the spike found the API
 tacks on **one extra point stamped at the current wall-clock time** (the
 moment you made the request), sitting after your requested end date.
 
-Concretely, from the real repro in `docs/step1_data_check.md` §1a:
+Concretely, from the real repro in `docs/studies/leadlag/step1_data_check.md` §1a:
 - Requested window: `2026-07-01` → `2026-07-15`.
 - Last real point in range: `2026-07-14T23:59:05Z, p=0.58`.
 - Then: `2026-10-01T09:58:11Z, p=0.635` — that's "now" (the day this spike
@@ -248,7 +248,7 @@ would misassign early closes.
    `fidelity=60`; §1b, "max-range-per-request probe"). Instead, chunk the
    pull into ≤15-day windows, tile them back to back, concatenate, and
    de-duplicate on `t` (chunk-boundary inclusion is inconsistent — see the
-   "Chunk-boundary behavior" note in `docs/step1_data_check.md`).
+   "Chunk-boundary behavior" note in `docs/studies/leadlag/step1_data_check.md`).
 
 2. The `14:30` bar covers `14:30`–`15:30`, so its `Close` is the price at
    `15:30` — not knowable until `15:30`. After running it through
