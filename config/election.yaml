@@ -1,7 +1,8 @@
 # Milestone 2 (election study) data config: single source of truth for step 8.
 # Frozen design: docs/election/preregistration.md. Dates are quoted strings (UTC `Z`, or ET dates
 # where stated). Token ids come from Gamma GET /events/<id>, markets matched by question text.
-# `closed` is Gamma's closedTime, used only to bound the pull range (never to select data at t).
+# `closed` is Gamma's closedTime. It bounds the pull range and, since prereg A1, also selects data:
+# at an instant t >= closed the market is known to be over, so its price is the last traded price.
 
 study:
   data_start: "2025-06-01"     # ET date, first yfinance day (1d and 1h)

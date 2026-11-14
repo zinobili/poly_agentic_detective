@@ -33,13 +33,18 @@ from poly_actor.election.bundle import (
     publish,
     write,
 )
-from poly_actor.election.config import AI_SUBS, SIGNALS, ElectionConfig
+from poly_actor.election.config import (
+    AI_SUBS,
+    E5_START,
+    ELECTION_DAY,
+    EVENT_DAY,
+    H2_EST_END,
+    SIGNALS,
+    W3_END,
+    ElectionConfig,
+)
 
-H2_EST_END = "2026-10-30"
-EVENT_DAY = "2026-11-04"
-ELECTION_DAY = "2026-11-03"
-W3_END = "2026-11-06"
-E5_START = "2026-11-04"
+AMENDMENTS = ("A1", "A2", "A3")  # dated amendments in the pre-registration
 
 
 # ---------------------------------------------------------------- inputs
@@ -113,7 +118,7 @@ def run_h1(S: pd.DataFrame, cfg: ElectionConfig) -> tuple[dict, list[dict], dict
         "dropped_sessions_missing_dp": [s for s in S.index if pd.isna(S.loc[s, "dp_p_sen"])],
     }
     # robustness (composite)
-    rob = [{"name": "baseline (RSP, TLT, dP_sen)", **_rob(h1["ai"])}]
+    rob = [{"name": "baseline (RSP, TLT, dP_sen)", **_rob(h1["ai"]), "label": ROBUSTNESS}]
     spec = [
         ("SPY instead of RSP", {"x": S["dp_p_sen"], "c1": S["SPY"], "c2": S["TLT"]}, 11),
         ("no controls", {"x": S["dp_p_sen"]}, 12),
@@ -132,7 +137,7 @@ def run_h1(S: pd.DataFrame, cfg: ElectionConfig) -> tuple[dict, list[dict], dict
         r = h1_row(df, "y", "x", ctr, off)
         if name.startswith("logit"):
             r["unit"] = "per +1 logit (b10 fields are b x 10)"
-        rob.append({"name": name, **_rob(r)})
+        rob.append({"name": name, **_rob(r), "label": _rob_label(name)})
     top5 = base["dp"].abs().sort_values(ascending=False, kind="stable").index[:5]
     df = base.drop(index=top5)
     rob.append(
@@ -140,6 +145,7 @@ def run_h1(S: pd.DataFrame, cfg: ElectionConfig) -> tuple[dict, list[dict], dict
             "name": "drop 5 largest |dP| days",
             **_rob(h1_row(df, "ai", "dp", c, 17)),
             "dropped": list(top5),
+            "label": ROBUSTNESS,
         }
     )
     # H5 sub-baskets
@@ -161,6 +167,14 @@ def run_h1(S: pd.DataFrame, cfg: ElectionConfig) -> tuple[dict, list[dict], dict
         "wald_equal": wald,
     }
     return h1, rob, h5, base
+
+
+ROBUSTNESS = "robustness"
+
+
+def _rob_label(name: str) -> str:
+    """E4 alternative-signal rows are exploratory; the other rows are robustness checks."""
+    return ex.LABEL if name.startswith("E4") else ROBUSTNESS
 
 
 def _rob(r: dict) -> dict:
@@ -310,7 +324,9 @@ def analyse(cfg: ElectionConfig, clean_dir: Path, out_dir: Path) -> dict:
     hd = headline(h1, h2, h2b)
     res = {
         "meta": {
-            "preregistration": "docs/election/preregistration.md (frozen 2026-11-13, amendment A1)",
+            "preregistration": "docs/election/preregistration.md (frozen 2026-11-13, amendments "
+            + ", ".join(AMENDMENTS)
+            + ")",
             "pre_sample": list(cfg.pre_sample),
             "h1_n_sessions": h1["ai"]["n"],
             "h2_est_end": H2_EST_END,

@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import math
-from datetime import date
 
 import numpy as np
 import pandas as pd
 
 from poly_actor.analysis import models
 from poly_actor.election import stats as st
+from poly_actor.election.config import E5_START, ELECTION_DAY, PAST_ELECTIONS
 
 LABEL = "exploratory"
-ROLL = 60
-LAST = 30
-ELECTIONS = ("2018-11-06", "2022-11-08", "2024-11-05", "2026-11-03")
+ROLL = 60  # rows (complete-case sessions) per rolling window
+LAST = 30  # rows in the "last 30 sessions" interaction
+Z90 = 1.645  # two-sided 90% normal z of the E1 band (as specified; not recomputed from CI_LEVEL)
+TRADING_DAYS_PER_YEAR = 252.0  # annualised VXN -> one-day implied move
+MIN_E3_ROWS = 5  # E3 reports a correlation only with at least this many days
+ELECTIONS = (*PAST_ELECTIONS, ELECTION_DAY)
 REL_DAYS = (-20, 7)
 
 
@@ -30,9 +33,7 @@ def e1_rolling(dates: list[str], y: np.ndarray, x: np.ndarray, Z: np.ndarray) ->
             rows.append({"date": dates[end - 1], "b10_pct": np.nan, "lo": np.nan, "hi": np.nan})
             continue
         b, se = f.b * st.PER_10PTS_PCT, f.se * st.PER_10PTS_PCT
-        rows.append(
-            {"date": dates[end - 1], "b10_pct": b, "lo": b - 1.645 * se, "hi": b + 1.645 * se}
-        )
+        rows.append({"date": dates[end - 1], "b10_pct": b, "lo": b - Z90 * se, "hi": b + Z90 * se})
     last = np.zeros(len(y))
     last[-LAST:] = 1.0
     f = st.beta_fit(y, x, np.column_stack([x * last, last, Z]))
@@ -79,7 +80,7 @@ def e2_vol(vol: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
         seg["date"] = seg.index
         parts.append(seg.reset_index(drop=True))
         nxt = days[i0 + 1] if i0 + 1 < len(days) else None
-        implied = w.loc[e, "^VXN"] / math.sqrt(252.0)
+        implied = w.loc[e, "^VXN"] / math.sqrt(TRADING_DAYS_PER_YEAR)
         real = (
             100.0 * math.log(w.loc[nxt, "^NDX"] / w.loc[e, "^NDX"])
             if nxt and pd.notna(w.loc[nxt, "^NDX"])
@@ -107,7 +108,7 @@ def e3_moratorium(
     m = mor.assign(session=mor["session"].astype(str)).set_index("session")["mean_dp"]
     df = pd.DataFrame({"mean_dp": m, "excess_ret": power_minus_xlu.reindex(m.index)}).dropna()
     out = {"label": LABEL, "series": "e3_scatter", "n": int(len(df))}
-    if len(df) >= 5:
+    if len(df) >= MIN_E3_ROWS:
         rho = models.spearman(df["mean_dp"].to_numpy(), df["excess_ret"].to_numpy())
         p = st.label_perm(df["mean_dp"].to_numpy(), df["excess_ret"].to_numpy(), gen)
         out |= {"rho": rho, "p_two": p["p_two"], "ci90": p["ci90"]}
@@ -116,7 +117,7 @@ def e3_moratorium(
 
 
 def e5_drift(
-    names: list[str], b: np.ndarray, ar_daily: pd.DataFrame, start: str = "2026-11-04"
+    names: list[str], b: np.ndarray, ar_daily: pd.DataFrame, start: str = E5_START
 ) -> tuple[dict, pd.DataFrame]:
     """Top vs bottom tercile (by pre-election b_i) cumulative abnormal return from `start`."""
     rank = pd.Series(b, index=names).rank(method="first")
@@ -147,7 +148,3 @@ def e5_drift(
         else None,
     }
     return out, car.reset_index()
-
-
-def iso(d) -> str:
-    return d.isoformat() if isinstance(d, date) else str(d)

@@ -64,7 +64,10 @@ def test_planted_h4_and_h3_and_h5(planted):
     assert res["h4"]["verdict"] == "odds first"
     nq = {r["lag"]: r for r in res["h3"]["instruments"]["NQ"]["rows"]}
     assert max(nq, key=lambda k: abs(nq[k]["t"])) == 0
-    assert res["h5"]["wald_equal"]["p"] > 0.0  # computed, finite
+    wald, subs = res["h5"]["wald_equal"], res["h5"]["subs"]
+    assert wald["df"] == 3 and 0.0 <= wald["p"] <= 1.0
+    # the Wald test's per-sub-basket b are the H5 regressions' b (same sample, same regressors)
+    assert wald["b10_pct"] == pytest.approx([subs[s]["b10_pct"] for s in subs], rel=1e-9)
 
 
 def test_noise_finds_nothing(noise):
@@ -83,6 +86,14 @@ def test_event_dp_uses_resolved_price(planted):
 def test_every_exploratory_block_is_labelled(planted):
     _, res = planted
     assert all(v["label"] == "exploratory" for v in res["exploratory"].values())
+    labels = {r["name"]: r["label"] for r in res["robustness"]}
+    assert all((lab == "exploratory") == n.startswith("E4") for n, lab in labels.items())
+    assert set(labels.values()) == {"exploratory", "robustness"}
+
+
+def test_meta_names_every_amendment(planted):
+    _, res = planted
+    assert all(a in res["meta"]["preregistration"] for a in ("A1", "A2", "A3"))
 
 
 def test_results_contract_and_series_exist(planted):
@@ -123,6 +134,20 @@ def test_publish_copies_bundle(planted, tmp_path):
     files = an.publish(d / "out", tmp_path / "reports" / "election")
     assert "results.json" in files and any(f.startswith("series/") for f in files)
     json.loads((tmp_path / "reports" / "election" / "results.json").read_text())
+    stale = tmp_path / "reports" / "election" / "stale.txt"
+    stale.write_text("old")
+    an.publish(d / "out", tmp_path / "reports" / "election")
+    assert not stale.exists()  # replaced, not merged
+    assert sorted(p.name for p in (tmp_path / "reports").iterdir()) == ["election"]  # no temp
+
+
+def test_publish_without_results_raises_and_keeps_report(tmp_path):
+    rep = tmp_path / "reports" / "election"
+    rep.mkdir(parents=True)
+    (rep / "results.json").write_text("{}")
+    with pytest.raises(FileNotFoundError):
+        an.publish(tmp_path / "missing", rep)
+    assert (rep / "results.json").read_text() == "{}"
 
 
 # ---------------------------------------------------------------- look-ahead and data rules

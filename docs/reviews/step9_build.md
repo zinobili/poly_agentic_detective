@@ -191,3 +191,73 @@ Lessons:
 - The headline comes only from the H1/H2 verdict rules for the composite.
 - A1 fires on real data.
 - The synthetic panels use the real XNYS sessions and bar ends.
+
+## Minors batch (2026-11-14)
+
+Scope: validator minors m1, m2, m5–m8 (`docs/reviews/step9_r1.md`) and the cheap, behaviour-neutral
+crusader minors (`docs/reviews/push_2026-11-13c_crusader.md`). The analysis is frozen, so no
+estimate, p-value, verdict or series value changed (proof below).
+
+**Tests (validator m1, m2), mutation-checked with bytecode off and the source restored after each:**
+- `test_permutation_never_uses_a_shift_below_20` spies on `np.roll` inside `circular_perm_p`. It
+  checks that every shift has min(j, n−j) ≥ 20, that there are 21 distinct shifts at n = 60, and
+  that n = 39 gives NaN. Mutants: `admissible_shifts(len(x), 1)` inside the function, and a default
+  `min_shift=1`. Both were **killed**.
+- `test_h4_lag_never_crosses_a_session_boundary`: the only dependence is the previous session's
+  last odds bar driving the next session's first stock bar. The test checks the exact n per lag
+  (S·(P−1−k) for k ≥ 0, S·(P+k) for k < 0), that no lag is BH-rejected, and that the verdict is
+  "no detectable ordering". Mutant: a flattened `np.roll` in `lag_scan`. **Killed**.
+
+**Labels and text:**
+- m5: every `robustness` row now carries a `label`. The E4 rows are `exploratory` and the others
+  are `robustness`. A test covers this.
+- m6: `meta.preregistration` now names amendments A1, A2 and A3. A test covers this.
+- m7: corrected the `closed` comment in `config/election.yaml`. Since A1, `closed` does select
+  data at t ≥ closedTime.
+- m8: added the caveat to the H5 checklist `plain` text: secondary, a single uncorrected test,
+  makes no sub-basket significant, and the composite b is null. `report_text.h5_chart` already
+  carried that caveat, so it was not touched.
+
+**Engineering (crusader):**
+- Removed dead code: `explore.iso` and `stats.finite`.
+- Named the magic numbers:
+  - `explore.Z90 = 1.645`. It is kept literal, not `norm.ppf(0.95)`, so the E1 band is
+    byte-identical.
+  - `TRADING_DAYS_PER_YEAR`, `MIN_E3_ROWS` and `intraday.MIN_SLOPE_OBS`.
+  - Added row-unit comments on `ROLL` and `LAST`.
+  - Added `bundle.WALD_ALPHA`.
+- The pre-registered dates now live in one block in `config.py`, imported by `analysis.py` and
+  `explore.py`:
+  - `ELECTION_DAY`, `EVENT_DAY`, `H2_EST_END`, `W3_END`, `E5_START` and `PAST_ELECTIONS`.
+  - `explore.ELECTIONS` and the `e5_drift` default are derived from them.
+- `bundle.tick` is now a `def`.
+- `publish` is atomic. It copies to a sibling staging dir and then swaps it in with renames. It
+  restores the old bundle if the swap fails and leaves no temp dirs. Two tests were added: replace
+  without merge, and a missing-results error that leaves the report untouched.
+- The tautological `wald p > 0` assert was replaced. The test now checks df = 3, p in [0, 1], and
+  that the Wald b equal the H5 per-sub-basket b.
+
+**Proof that the numbers did not change:**
+- `analyse`, `publish` and `report` were re-run.
+- A recursive diff of the old and new `reports/election/results.json` shows only three kinds of
+  difference. None is numeric:
+  - 8 added `robustness[i].label` fields;
+  - the `meta.preregistration` string;
+  - `checklist.H5[0].plain`.
+- All 9 `reports/election/series/*.csv` files are byte-identical. `git diff --stat reports/`
+  touches only `results.json` (+10/−2).
+- In `docs/election/findings.md`, only the results fingerprint changed (e4ccd6a7099f →
+  bce017545660).
+- The dashboard fixture bundle needed no change.
+
+**Deferred:**
+- Crusader 2: a `coef_test` helper.
+- Crusader 3: the duplicate fit in `e1_rolling`.
+- Crusader 6: split `analyse`, `run_h1` and `checklist`, and typed results (NamedTuple/TypedDict).
+- Crusader 7: document the matrix-name letters in the module docstring.
+- Crusader 8: atomic `write()`.
+- Crusader 9: the remaining test gaps (`bundle.clean`, the `e2_vol`/`e3` edge paths, the CLI).
+- Validator m8: H4 noise test with several seeds, and the H1 noise test at 1,000 shifts.
+- Validator m3 and m4: already disclosed in A3. The dashboard wording belongs to step 10.
+
+`bash scripts/check.sh`: **PASS** (586 passed, 1 skipped; ruff check and format ok).

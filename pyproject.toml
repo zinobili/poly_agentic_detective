@@ -38,6 +38,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "poly_actor.analysis" = ["*.txt"]  # findings_template.txt (prose of docs/findings.md)
+"poly_actor.election" = ["*.txt"]  # findings_template.txt (prose of docs/election/findings.md)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

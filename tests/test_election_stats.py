@@ -192,6 +192,25 @@ def test_walk_forward_top_decile_to_date_and_zero_never_selected():
     assert all(r >= st.WARMUP for r in rows)
 
 
+def test_permutation_never_uses_a_shift_below_20(monkeypatch):
+    # validator m1: the guard must hold inside circular_perm_p, not only in admissible_shifts
+    y, dp, Z = daily_draw(7, 0.0, n=60)
+    used: list[int] = []
+    real_roll = np.roll
+
+    def spy(a, shift, *args, **kwargs):
+        used.append(int(shift))
+        return real_roll(a, shift, *args, **kwargs)
+
+    monkeypatch.setattr(st.np, "roll", spy)
+    p, n_adm = st.circular_perm_p(y, dp, Z, st.rng(0), n_shifts=200)
+    assert n_adm == 21  # j in 20..40 for n = 60
+    assert used and all(20 <= min(j, 60 - j) for j in used)
+    y, dp, Z = daily_draw(8, 0.0, n=39)  # no admissible shift at all
+    p, n_adm = st.circular_perm_p(y, dp, Z, st.rng(0), n_shifts=50)
+    assert np.isnan(p) and n_adm == 0
+
+
 # ---------------------------------------------------------------- Wald
 
 
@@ -247,3 +266,19 @@ def test_walk_forward_decile_uses_only_sessions_to_date():
         for d in st.walk_forward(dp, g.normal(0, 0.01, (201, 5)), g.normal(0, 0.01, (201, 2)))
     ]
     assert 125 in rows
+
+
+def test_h4_lag_never_crosses_a_session_boundary():
+    # validator m2: the only dependence is the previous session's last odds bar -> this
+    # session's first stock bar. Within-session lags must not see it at all.
+    g = np.random.default_rng(9)
+    S, P = 300, 7
+    x = g.normal(0, 0.01, (S, P))
+    x[:, 0] = np.nan  # first bar has no dP (panel rule)
+    y = g.normal(0, 0.003, (S, P))
+    y[1:, 0] += 0.5 * x[:-1, P - 1]
+    out = itd.h4(y, x)
+    n = {r["lag"]: r["n"] for r in out["rows"]}
+    assert n == {k: S * (P - 1 - k) if k >= 0 else S * (P + k) for k in itd.LAGS}
+    assert not any(r["bh_reject"] for r in out["rows"])
+    assert out["verdict"] == "no detectable ordering"

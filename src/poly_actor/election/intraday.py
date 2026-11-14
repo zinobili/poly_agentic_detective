@@ -20,6 +20,7 @@ from poly_actor.election import stats as st
 LAGS = [-3, -2, -1, 0, 1, 2, 3]
 BH_Q = 0.05
 BAND_Q = 0.95
+MIN_SLOPE_OBS = 10  # fewer complete (y, x) pairs than this -> slope reported as NaN
 
 
 # ---------------------------------------------------------------- H4
@@ -50,7 +51,7 @@ def lag_within(x: np.ndarray, k: int) -> np.ndarray:
 def _t_slope(y: np.ndarray, x: np.ndarray) -> tuple[float, float, float, int, tuple]:
     ok = ~np.isnan(y) & ~np.isnan(x)
     yy, xx = y[ok], x[ok]
-    if len(yy) < 10 or np.ptp(xx) == 0:
+    if len(yy) < MIN_SLOPE_OBS or np.ptp(xx) == 0:
         return np.nan, np.nan, np.nan, int(len(yy)), (np.nan, np.nan)
     X = np.column_stack([np.ones(len(xx)), xx])
     fit = models.ols(X, yy, cov="hac")

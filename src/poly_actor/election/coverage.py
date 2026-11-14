@@ -7,6 +7,8 @@ before creation and after the resolution are missing by construction.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -16,7 +18,7 @@ from poly_actor.election.config import SIGNALS, ElectionConfig
 MINUTE_S = 60
 
 
-def age_stats(age: pd.Series) -> dict:
+def age_stats(age: pd.Series) -> dict[str, Any]:
     a = age.dropna()
     if not len(a):
         return {"n_valid": 0, "median_s": None, "p95_s": None}
@@ -27,14 +29,14 @@ def age_stats(age: pd.Series) -> dict:
     }
 
 
-def odds_stats(df: pd.DataFrame, ts_col: str, life: dict[str, tuple[int, int]]) -> dict:
+def odds_stats(df: pd.DataFrame, ts_col: str, life: dict[str, tuple[int, int]]) -> dict[str, Any]:
     """Missing share and age stats per signal and overall, all rows and in-life rows."""
     inst = pd.Series(epoch_seconds(df[ts_col]), index=df.index)
     lo = df["signal"].map(lambda k: life[k][0])
     hi = df["signal"].map(lambda k: life[k][1])
     in_life = (inst >= lo) & (inst <= hi)
 
-    def block(mask: pd.Series) -> dict:
+    def block(mask: pd.Series) -> dict[str, Any]:
         d = df[mask]
         return {
             "rows": int(len(d)),
@@ -50,7 +52,7 @@ def odds_stats(df: pd.DataFrame, ts_col: str, life: dict[str, tuple[int, int]]) 
     return out
 
 
-def ticker_sessions(daily: pd.DataFrame, sessions: pd.DataFrame) -> dict:
+def ticker_sessions(daily: pd.DataFrame, sessions: pd.DataFrame) -> dict[str, Any]:
     out = {}
     for tk, g in daily.groupby("ticker"):
         miss = g.loc[g["missing"], "session"]
@@ -62,7 +64,9 @@ def ticker_sessions(daily: pd.DataFrame, sessions: pd.DataFrame) -> dict:
     return out
 
 
-def ticker_bars(hourly: pd.DataFrame, sessions: pd.DataFrame, unmatched: pd.DataFrame) -> dict:
+def ticker_bars(
+    hourly: pd.DataFrame, sessions: pd.DataFrame, unmatched: pd.DataFrame
+) -> dict[str, Any]:
     exp = bar_table(sessions).groupby("session").size()
     out = {}
     for tk, g in hourly.groupby("ticker"):
@@ -79,7 +83,7 @@ def ticker_bars(hourly: pd.DataFrame, sessions: pd.DataFrame, unmatched: pd.Data
     return out
 
 
-def stamp_offsets(points: dict[str, pd.DataFrame], signals: list[str]) -> dict:
+def stamp_offsets(points: dict[str, pd.DataFrame], signals: list[str]) -> dict[str, Any]:
     """Seconds after the grid line at which fid-60 / fid-10 points are stamped (lesson 10)."""
     out = {}
     for fid in (60, 10):
@@ -114,7 +118,7 @@ def coverage_report(
     sessions: pd.DataFrame,
     unmatched: pd.DataFrame,
     points: dict[str, pd.DataFrame],
-) -> dict:
+) -> dict[str, Any]:
     life = {
         k: (m.created_s, m.closed_s or cfg.data_end_s)
         for k, m in {**cfg.signals, **cfg.moratorium}.items()
@@ -122,7 +126,7 @@ def coverage_report(
     ts_col = {"daily": "session", "odds_daily": "close_ts", "hourly": "bar_end_ts"}
     ts_col |= {"odds_hourly": "bar_end_ts", "night_5m": "bar_end_ts", "vol_daily": "date"}
     ts_col["moratorium_daily"] = "close_ts"
-    rep: dict = {"tables": {}}
+    rep: dict[str, Any] = {"tables": {}}
     for name, df in tables.items():
         rep["tables"][name] = {"rows": int(len(df)), "range": _span(df, ts_col[name])}
     rep["odds_daily"] = odds_stats(tables["odds_daily"], "close_ts", life)

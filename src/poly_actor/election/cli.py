@@ -1,12 +1,17 @@
 """CLI: python -m poly_actor.election ingest [--workers N] [--dry-run] [--only pm|yf] | panel |
-analyse | publish"""
+analyse | publish | report"""
 
 from __future__ import annotations
 
 import argparse
 
 from poly_actor.election import ingest as ing
-from poly_actor.election.config import CLEAN_ELECTION, RAW_ELECTION, load_config
+from poly_actor.election.config import (
+    CLEAN_ELECTION,
+    RAW_ELECTION,
+    ElectionConfig,
+    load_config,
+)
 from poly_actor.ingest import polymarket
 from poly_actor.ingest.common import IngestError, ingest_lock
 
@@ -15,7 +20,7 @@ def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def cmd_ingest(args) -> int:
+def cmd_ingest(args: argparse.Namespace) -> int:
     cfg = load_config()
     if args.dry_run:
         return _ingest(args, cfg)
@@ -27,7 +32,7 @@ def cmd_ingest(args) -> int:
         return 3
 
 
-def _ingest(args, cfg) -> int:
+def _ingest(args: argparse.Namespace, cfg: ElectionConfig) -> int:
     fails = 0
     if args.only in (None, "pm"):
         st = polymarket.run_polymarket(
@@ -52,7 +57,7 @@ def _ingest(args, cfg) -> int:
     return 1 if fails else 0
 
 
-def cmd_panel(args) -> int:
+def cmd_panel(args: argparse.Namespace) -> int:
     from poly_actor.election.panel import build_all
 
     cov = build_all(load_config(), RAW_ELECTION, CLEAN_ELECTION)
@@ -60,7 +65,7 @@ def cmd_panel(args) -> int:
     return 0
 
 
-def cmd_analyse(args) -> int:
+def cmd_analyse(args: argparse.Namespace) -> int:
     from poly_actor.election.analysis import analyse
 
     out = CLEAN_ELECTION / "results"
@@ -70,12 +75,25 @@ def cmd_analyse(args) -> int:
     return 0
 
 
-def cmd_publish(args) -> int:
+def cmd_publish(args: argparse.Namespace) -> int:
     from poly_actor.config import ROOT
     from poly_actor.election.analysis import publish
 
     files = publish(CLEAN_ELECTION / "results", ROOT / "reports" / "election")
     _log(f"published {len(files)} files to reports/election/")
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    from poly_actor.election import findings
+    from poly_actor.election.report_load import bundle_dir
+
+    try:
+        out = findings.write_report(bundle_dir())
+    except findings.ReportInputError as exc:
+        _log(f"{exc}; run `analyse` and `publish` first")
+        return 2
+    _log(f"wrote {out}")
     return 0
 
 
@@ -94,5 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     a.set_defaults(fn=cmd_analyse)
     b = sub.add_parser("publish", help="copy results/ to reports/election/")
     b.set_defaults(fn=cmd_publish)
+    r = sub.add_parser("report", help="reports/election/ -> docs/election/findings.md")
+    r.set_defaults(fn=cmd_report)
     args = ap.parse_args(argv)
     return args.fn(args)

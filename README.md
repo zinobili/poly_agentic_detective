@@ -122,6 +122,27 @@ are in [`docs/progress.md`](docs/progress.md), and ideas for milestone 2 are in
 | 6 | Pre-registered statistical analysis |
 | 7 | Generated findings report, one-command refresh |
 
+## Milestone 2: the partisan beta of AI
+
+A second, self-contained study on the 2026 US midterm: did AI stocks carry a sensitivity to the
+odds that Democrats take Congress, over and above the broad market, and did that sensitivity,
+measured before the election, say which names would reprice on election night? The plan is frozen
+in [`docs/election/preregistration.md`](docs/election/preregistration.md). The answer, its limits
+and every number are in the generated [`docs/election/findings.md`](docs/election/findings.md) and
+in a Streamlit presentation written for people who trade AI equities and derivatives.
+
+[![Election study: the answer first, then the evidence](docs/images/election/01-answer.png)](docs/images/election/01-answer.png)
+
+```bash
+.venv/bin/streamlit run src/poly_actor/election/app.py   # the presentation (reads reports/election/)
+.venv/bin/python -m poly_actor.election report           # reports/election/ -> docs/election/findings.md
+```
+
+The published results bundle in `reports/election/` is tracked, so both commands work on a fresh
+clone with no data pull. To rebuild it from scratch: `python -m poly_actor.election ingest`, then
+`panel`, `analyse` and `publish`. On Windows use `.venv/Scripts/streamlit.exe` and
+`.venv/Scripts/python.exe`. More screenshots are in [`docs/images/election/`](docs/images/election/).
+
 ## Setup
 
 Requires Python 3.11+. No API keys are needed.

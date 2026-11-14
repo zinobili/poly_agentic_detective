@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -23,6 +24,15 @@ CLEAN_ELECTION = CLEAN_DIR / "election"
 SIGNALS = ("p_sen", "p_house", "p_sweep", "p_rr")
 AI_SUBS = ("semis", "hyperscalers", "power_infra", "software")
 BASKET_SIZE = 29  # names per basket (AI and placebo), fixed by the pre-registration
+
+# Pre-registered dates (ET session dates, docs/election/preregistration.md); single source for
+# analysis.py and explore.py.
+ELECTION_DAY = "2026-11-03"
+EVENT_DAY = "2026-11-04"  # first session after the election (H2 primary window ends here)
+H2_EST_END = "2026-10-30"  # last session of the H2 per-stock beta estimation
+W3_END = "2026-11-06"  # end of the H2 close3 -> close6 window
+E5_START = EVENT_DAY  # E5 drift starts on the event session
+PAST_ELECTIONS = ("2018-11-06", "2022-11-08", "2024-11-05")  # E2 comparison elections
 
 
 @dataclass(frozen=True)
@@ -55,7 +65,7 @@ def et_wall(stamp: str) -> int:
     return int(datetime.fromisoformat(stamp).replace(tzinfo=ET).timestamp())
 
 
-def _market(name: str, d: dict) -> Market:
+def _market(name: str, d: dict[str, Any]) -> Market:
     closed = d.get("closed")
     return Market(
         name=name,
@@ -69,7 +79,10 @@ def _market(name: str, d: dict) -> Market:
 
 
 class ElectionConfig:
-    def __init__(self, raw: dict):
+    """Typed view of `config/election.yaml`. Instants are epoch seconds (UTC); ET calendar dates
+    are converted at America/New_York midnight."""
+
+    def __init__(self, raw: dict[str, Any]):
         self.raw = raw
         st = raw["study"]
         self.data_start_s = et_midnight(st["data_start"])

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,11 @@ from poly_actor.election.config import AI_SUBS, ElectionConfig
 
 INSTRUMENTS = {"NQ": "NQ=F", "ES": "ES=F", "RTY": "RTY=F"}
 CTX_START = "2025-07-14"
+WALD_ALPHA = 0.05  # H5 Wald equality test, single secondary test (no correction)
+
+
+def tick(ok: bool) -> str:
+    return "✓" if ok else "✗"
 
 
 def basket(D: pd.DataFrame, names: list[str]) -> pd.Series:
@@ -27,7 +33,6 @@ def checklist(res: dict) -> dict:
     h1, h2 = res["h1"], res["h2"]["groups"]["ai"]["windows"]["close3_close4"]
     hd = res["headline"]
     b2, wd = res["h2b"]["ai"], res["h5"]["wald_equal"]
-    tick = lambda ok: "✓" if ok else "✗"  # noqa: E731
     return {
         "H1": [
             {
@@ -84,8 +89,9 @@ def checklist(res: dict) -> dict:
         "H5": [
             {
                 "name": "Wald equal b",
-                "status": tick(res["h5"]["wald_equal"]["p"] < 0.05),
-                "plain": "sub-baskets differ in beta",
+                "status": tick(res["h5"]["wald_equal"]["p"] < WALD_ALPHA),
+                "plain": "sub-baskets differ in beta (secondary, single uncorrected test; it "
+                "does not make any sub-basket significant, and the composite b is null)",
                 "technical": f"W={wd['wald']:.2f}, p={wd['p']:.4f}",
             }
         ],
@@ -191,7 +197,28 @@ def publish(results_dir: Path, report_dir: Path) -> list[str]:
     """Copy results.json + series/ to the tracked report directory (replacing it)."""
     if not (results_dir / "results.json").exists():
         raise FileNotFoundError(f"run `analyse` first: no {results_dir / 'results.json'}")
-    if report_dir.exists():
-        shutil.rmtree(report_dir)
-    shutil.copytree(results_dir, report_dir)
+    # Copy to a sibling staging dir first, so a failed copy never touches the tracked directory;
+    # then swap it in with renames on the same filesystem (the previous bundle is restored if the
+    # swap fails).
+    report_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{report_dir.name}.new-", dir=report_dir.parent))
+    backup = report_dir.with_name(f".{report_dir.name}.old")
+    try:
+        staging.chmod(0o755)
+        shutil.copytree(results_dir, staging, dirs_exist_ok=True)
+        if backup.exists():
+            shutil.rmtree(backup)
+        if report_dir.exists():
+            report_dir.rename(backup)
+        try:
+            staging.rename(report_dir)
+        except OSError:
+            if backup.exists() and not report_dir.exists():
+                backup.rename(report_dir)
+            raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    if backup.exists():
+        shutil.rmtree(backup)
     return sorted(str(f.relative_to(report_dir)) for f in report_dir.rglob("*") if f.is_file())

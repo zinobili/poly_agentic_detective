@@ -14,7 +14,6 @@ Implementation choices where the pre-registration is silent (stated in the step 
 
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass
 
 import numpy as np
@@ -340,7 +339,3 @@ def h4_verdict(lags: list[int], t: list[float], reject: list[bool]) -> str:
 def logit(p: np.ndarray) -> np.ndarray:
     q = np.clip(p, 0.01, 0.99)
     return np.log(q / (1 - q))
-
-
-def finite(v: float | None) -> float | None:
-    return None if v is None or not math.isfinite(v) else float(v)
