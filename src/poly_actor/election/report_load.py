@@ -51,11 +51,13 @@ def load_bundle(folder: Path) -> Bundle | None:
         log.warning("Ignoring unreadable bundle %s: %s", path, exc)
         return None
     if not isinstance(results, dict):
+        log.warning("Ignoring bundle %s: top level is not a JSON object", path)
         return None
     series: dict[str, pd.DataFrame] = {}
     for name, rel in sorted((results.get("series") or {}).items()):
         csv = folder / str(rel)
         if not csv.is_file():
+            log.warning("Series %r listed in %s is missing: %s", name, RESULTS_FILE, csv)
             continue
         try:
             series[name] = pd.read_csv(csv)

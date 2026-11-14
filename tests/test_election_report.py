@@ -4,6 +4,7 @@ with the per-ticker coverage dropped and the long chart series thinned."""
 
 import copy
 import json
+import os
 import re
 from pathlib import Path
 
@@ -13,7 +14,12 @@ from streamlit.testing.v1 import AppTest
 from poly_actor.election import charts, findings
 from poly_actor.election import report_text as text
 from poly_actor.election.cli import main as cli_main
-from poly_actor.election.report_load import BUNDLE_DIR, BUNDLE_DIR_ENV, load_bundle
+from poly_actor.election.report_load import (
+    BUNDLE_DIR,
+    BUNDLE_DIR_ENV,
+    bundle_signature,
+    load_bundle,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "election" / "bundle"
 APP = Path(__file__).parents[1] / "src" / "poly_actor" / "election" / "app.py"
@@ -373,3 +379,53 @@ def test_page_renders_on_the_published_bundle(monkeypatch):
     """Row 8, offline: the real bundle renders with no exception and nothing missing."""
     body = page_text(run_app(monkeypatch, BUNDLE_DIR))
     assert "not in the results" not in body.lower()
+
+
+def _write_bundle(folder: Path, results: object) -> None:
+    (folder / "results.json").write_text(json.dumps(results), encoding="utf-8")
+
+
+def test_load_bundle_rejects_non_object_json_with_a_warning(tmp_path, caplog):
+    _write_bundle(tmp_path, [1, 2, 3])
+    with caplog.at_level("WARNING"):
+        assert load_bundle(tmp_path) is None
+    assert "not a JSON object" in caplog.text
+
+
+def test_load_bundle_invalid_json_warns(tmp_path, caplog):
+    (tmp_path / "results.json").write_text("{not json", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert load_bundle(tmp_path) is None
+    assert "unreadable bundle" in caplog.text
+
+
+def test_load_bundle_skips_missing_and_unreadable_series_with_warnings(tmp_path, caplog):
+    (tmp_path / "series").mkdir()
+    (tmp_path / "series" / "good.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (tmp_path / "series" / "bad.csv").write_bytes(b"")  # pandas: EmptyDataError (a ValueError)
+    _write_bundle(
+        tmp_path,
+        {"series": {"good": "series/good.csv", "bad": "series/bad.csv", "gone": "series/x.csv"}},
+    )
+    with caplog.at_level("WARNING"):
+        got = load_bundle(tmp_path)
+    assert got is not None and list(got.series) == ["good"]
+    assert "unreadable series" in caplog.text and "is missing" in caplog.text
+
+
+def test_bundle_signature_changes_on_rewrite_and_is_empty_without_folder(tmp_path):
+    assert bundle_signature(tmp_path / "absent") == ()
+    _write_bundle(tmp_path, {})
+    before = bundle_signature(tmp_path)
+    path = tmp_path / "results.json"
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert bundle_signature(tmp_path) != before
+
+
+def test_guarded_block_logs_the_cause_when_inputs_are_missing(bundle, caplog):
+    res = copy.deepcopy(bundle.results)
+    del res["h4"]
+    with caplog.at_level("WARNING"):
+        block = text.h4_chart(res)
+    assert block.missing and "not rendered from the bundle" in caplog.text

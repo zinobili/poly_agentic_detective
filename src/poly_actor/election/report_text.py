@@ -11,6 +11,7 @@ probabilities in [0, 1] and are printed as percent or as points (x100).
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -20,6 +21,8 @@ from functools import wraps
 from typing import Any
 
 import pandas as pd
+
+log = logging.getLogger(__name__)
 
 Results = Mapping[str, Any]
 
@@ -474,8 +477,11 @@ class ChartText:
     missing: bool = False
 
 
-def _guarded(kicker: str, tag: str | None = None) -> Callable:
-    """A block whose inputs are missing from the bundle says so instead of raising."""
+def _guarded(
+    kicker: str, tag: str | None = None
+) -> Callable[[Callable[..., ChartText]], Callable[..., ChartText]]:
+    """A block whose inputs are missing from the bundle says so instead of raising. The cause
+    is logged with its traceback, so a malformed bundle or a real bug is not silently hidden."""
 
     def wrap(fn: Callable[..., ChartText]) -> Callable[..., ChartText]:
         @wraps(fn)
@@ -483,6 +489,7 @@ def _guarded(kicker: str, tag: str | None = None) -> Callable:
             try:
                 return fn(*args, **kwargs)
             except (KeyError, TypeError, IndexError, ValueError, AttributeError):
+                log.warning("Block %r not rendered from the bundle", fn.__name__, exc_info=True)
                 return ChartText(kicker, MISSING.capitalize(), "", "", "", tag, missing=True)
 
         return inner
