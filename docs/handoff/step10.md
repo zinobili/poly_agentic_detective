@@ -74,3 +74,6 @@ Environment: Linux, `.venv/bin/python`, `.venv/bin/streamlit`.
 
 ## Carried-over minors (crusader 2026-11-13b, docs/reviews/push_2026-11-13b_crusader.md)
 Fix the 10 minors listed there in `src/poly_actor/election/` (untyped args in cli/config/coverage, obscure `idxmax` in panel.py, non-atomic writes of clean parquet and coverage.json, lazy `coverage` import in panel.py) where they are cheap; defer the rest with a reason.
+
+## Carried-over minors (crusader 2026-11-13c, docs/reviews/push_2026-11-13c_crusader.md)
+Nine minors in the step 9 analysis code (dead helpers, repeated lin_test pattern, magic numbers, non-atomic publish, test gaps). Main fixes them after validation, not the step 10 builder.

@@ -157,3 +157,12 @@ Raised by the data build and the pre-push review; no stock return has been compa
 - **H2 sign.** The observed rank correlation is negative, against the pre-registered direction.
   Under the frozen one-sided test this is "did not predict". The two-sided p is reported beside
   it and is exploratory only.
+
+### A3, 2026-11-14 (disclosure from the independent validation, docs/reviews/step9_r1.md; no rule or verdict changed)
+- **Opening price discovery.** The first usable ΔP_sen (2025-07-21, −0.21) is the market finding
+  its opening level after a week without trades, not news. It enters H1 under the frozen sample
+  rule. The validator's recomputation without that day gives b = −1.10% per +10 points; the
+  verdict is unchanged. The pre-registered "drop the 5 largest |ΔP| days" robustness row covers it.
+- **Permutation resolution.** Over all 286 admissible shifts the H1 permutation p is 0.491; the
+  published 0.507 comes from 1,000 draws with replacement (A2). Same verdict.
+- **H2 two-sided p** sits at the 0.05 line within simulation error and is not a finding.
